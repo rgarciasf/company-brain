@@ -13,11 +13,11 @@ const BATCH = 25;
 
 /** Metadata fields declared on the HydraDB database (filterable). */
 const SCHEMA: HydraDB.TenantsCustomPropertyDefinition[] = [
-  { name: "source_type", dataType: "VARCHAR", maxLength: 64 },
-  { name: "access", dataType: "VARCHAR", maxLength: 256 }, // comma-joined access groups
-  { name: "doc_id", dataType: "VARCHAR", maxLength: 256 },
-  { name: "doc_status", dataType: "VARCHAR", maxLength: 32 },
-  { name: "updated_on", dataType: "VARCHAR", maxLength: 32 },
+  { name: "kb_source_type", dataType: "VARCHAR", maxLength: 64, enableMatch: true }, // "source_type" is reserved by HydraDB
+  { name: "access", dataType: "VARCHAR", maxLength: 256, enableMatch: true }, // comma-joined access groups
+  { name: "doc_id", dataType: "VARCHAR", maxLength: 256, enableMatch: true },
+  { name: "doc_status", dataType: "VARCHAR", maxLength: 32, enableMatch: true },
+  { name: "updated_on", dataType: "VARCHAR", maxLength: 32, enableMatch: true },
 ];
 
 export function hydraConfigured(): boolean {
@@ -77,7 +77,7 @@ export async function ingestChunks(chunks: Chunk[], log = console.log): Promise<
       documentMetadata: JSON.stringify(
         batch.map((c) => ({
           id: sourceId(c),
-          metadata: { source_type: c.sourceType, access: c.access.join(","), doc_id: c.docId, doc_status: c.status ?? "", updated_on: c.updated ?? "" },
+          metadata: { kb_source_type: c.sourceType, access: c.access.join(","), doc_id: c.docId, doc_status: c.status ?? "", updated_on: c.updated ?? "" },
           additional_metadata: { title: c.title.slice(0, 200), heading: c.heading.slice(0, 200) },
         })),
       ),
@@ -90,26 +90,33 @@ export async function ingestChunks(chunks: Chunk[], log = console.log): Promise<
   return ids;
 }
 
-/** Wait until sources are searchable (graph_creation or completed). */
-export async function waitIndexed(ids: string[], log = console.log, timeoutMs = 10 * 60_000): Promise<{ ready: number; failed: number }> {
+/**
+ * Wait until sources are actually searchable. HydraDB reports `graph_creation` before a source's
+ * chunks are stored, so a source counts as ready only when it is `completed` or its chunks can be fetched.
+ */
+export async function waitIndexed(ids: string[], log = console.log, timeoutMs = 20 * 60_000): Promise<{ ready: number; failed: number }> {
   const started = Date.now();
-  let ready = 0;
-  let failed = 0;
+  const ready = new Set<string>();
+  const failed = new Set<string>();
   while (Date.now() - started < timeoutMs) {
-    ready = 0;
-    failed = 0;
-    for (let i = 0; i < ids.length; i += 100) {
-      const res = await getClient().context.status({ database: HYDRA_DATABASE, collection: HYDRA_COLLECTION, ids: ids.slice(i, i + 100) });
+    const pending = ids.filter((id) => !ready.has(id) && !failed.has(id));
+    for (let i = 0; i < pending.length; i += 100) {
+      const res = await getClient().context.status({ database: HYDRA_DATABASE, collection: HYDRA_COLLECTION, ids: pending.slice(i, i + 100) });
       for (const s of res.data?.statuses ?? []) {
-        if (s.indexingStatus === "graph_creation" || s.indexingStatus === "completed") ready++;
-        else if (s.indexingStatus === "errored" || s.indexingStatus === "failed") failed++;
+        if (!s.id) continue;
+        if (s.indexingStatus === "completed") ready.add(s.id);
+        else if (s.indexingStatus === "errored" || s.indexingStatus === "failed") failed.add(s.id);
+        else if (s.indexingStatus === "graph_creation") {
+          const chunks = await getClient().context.chunks({ database: HYDRA_DATABASE, collection: HYDRA_COLLECTION, id: s.id }).catch(() => null);
+          if ((chunks?.data?.chunks?.length ?? 0) > 0) ready.add(s.id);
+        }
       }
     }
-    log(`   indexing: ${ready}/${ids.length} searchable${failed ? `, ${failed} failed` : ""}`);
-    if (ready + failed >= ids.length) break;
-    await sleep(5000);
+    log(`   indexing: ${ready.size}/${ids.length} searchable${failed.size ? `, ${failed.size} failed` : ""}`);
+    if (ready.size + failed.size >= ids.length) break;
+    await sleep(15_000);
   }
-  return { ready, failed };
+  return { ready: ready.size, failed: failed.size };
 }
 
 export interface HydraHit {
@@ -126,7 +133,7 @@ function label(v: Record<string, unknown> | undefined, ...keys: string[]): strin
 /** Hybrid search, filtered to the persona's access groups (and optional source types). */
 export async function search(query: string, opts: { groups: string[]; sourceTypes?: string[]; limit: number }): Promise<{ hits: HydraHit[]; graph: string[] }> {
   const metadataFilters: Record<string, unknown> = { access: { contains_any: opts.groups } };
-  if (opts.sourceTypes?.length) metadataFilters.source_type = { contains_any: opts.sourceTypes };
+  if (opts.sourceTypes?.length) metadataFilters.kb_source_type = { contains_any: opts.sourceTypes };
   const res = await getClient().query({
     database: HYDRA_DATABASE,
     collection: HYDRA_COLLECTION,

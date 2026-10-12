@@ -82,7 +82,7 @@ Knowledge retrieval is switchable with `KNOWLEDGE_BACKEND`:
 | Setup | none | `HYDRA_DB_API_KEY` in `.env`, then `npm run hydra:sync` |
 | Graph | declared graph (`data/graph.json`) via `explore_graph` | same, plus HydraDB's auto-extracted relation paths appended to search results |
 
-How it works (`src/hydra.ts`): each of our chunks is ingested as one HydraDB source with a stable id (`<doc>--<position>`) and filterable metadata (`source_type`, `access`, `doc_id`, `doc_status`, `updated_on`). Queries filter by the persona's access groups and requested source types; every hit is mapped back to the local chunk, so citations, `read_document`, the superseded-policy logic and the UI work unchanged. Access is re-checked locally on every hit (HydraDB metadata filters are not an ACL). If HydraDB errors or returns nothing, search falls back to local BM25 and the search chip shows ⚠️ with the reason. Uploads made in the UI are ingested into HydraDB as well.
+How it works (`src/hydra.ts`): each of our chunks is ingested as one HydraDB source with a stable id (`<doc>--<position>`) and filterable metadata (`kb_source_type`, `access`, `doc_id`, `doc_status`, `updated_on`). Queries filter by the persona's access groups and requested source types; every hit is mapped back to the local chunk, so citations, `read_document`, the superseded-policy logic and the UI work unchanged. Access is re-checked locally on every hit (HydraDB metadata filters are not an ACL). If HydraDB errors or returns nothing, search falls back to local BM25 and the search chip shows ⚠️ with the reason. Uploads made in the UI are ingested into HydraDB as well.
 
 ```bash
 npm run hydra:sync                      # create database + schema, upsert all chunks, wait for indexing, test query

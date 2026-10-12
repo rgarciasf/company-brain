@@ -34,7 +34,7 @@ test("sends persona access groups and source types as metadata filters", async (
   await kb.search("per diem", engineer, { sourceTypes: ["policies"], limit: 3 });
   assert.equal(lastRequest.queryBy, "hybrid");
   assert.deepEqual(lastRequest.metadataFilters.access, { contains_any: ["all", "engineering"] });
-  assert.deepEqual(lastRequest.metadataFilters.source_type, { contains_any: ["policies"] });
+  assert.deepEqual(lastRequest.metadataFilters.kb_source_type, { contains_any: ["policies"] });
 });
 
 test("maps HydraDB hits back to local chunks and drops chunks the persona can't access", async () => {
