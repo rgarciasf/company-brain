@@ -4,3 +4,5 @@ data/state
 .env.*
 !.env.example
 test
+data/import
+scripts/import-ascend.ts

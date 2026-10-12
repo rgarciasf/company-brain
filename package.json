@@ -15,7 +15,9 @@
     "eval": "node scripts/eval.ts",
     "db:install": "sh scripts/install-clickhouse.sh",
     "db:seed": "node scripts/seed.ts",
-    "hydra:sync": "node scripts/hydra-sync.ts"
+    "hydra:sync": "node scripts/hydra-sync.ts",
+    "hr:import": "node scripts/import-ascend.ts",
+    "db:users": "node scripts/setup-clickhouse-users.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
@@ -25,6 +27,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "typescript": "5.9"
   }
 }

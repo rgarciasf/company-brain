@@ -87,7 +87,7 @@ server.registerTool(
   },
   async ({ sql }) => {
     try {
-      const r = await runConsoleQuery(sql);
+      const r = await runConsoleQuery(sql, persona.databases);
       return text(JSON.stringify({ rows: r.rows, rowCount: r.rowCount, truncated: r.truncated, elapsedMs: r.elapsedMs, rowsRead: r.rowsRead }, null, 1));
     } catch (err) {
       return text(`Query failed: ${(err as Error).message}`, true);

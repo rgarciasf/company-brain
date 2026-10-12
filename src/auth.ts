@@ -45,3 +45,30 @@ export function isCron(req: http.IncomingMessage): boolean {
   const secret = process.env.CRON_SECRET;
   return !!secret && safeEqual(String(req.headers.authorization ?? ""), `Bearer ${secret}`);
 }
+
+// ---- Optional second gate for the HR persona (HR_PASSWORD) ----
+const HR_COOKIE = "brain_hr";
+
+export function hrGateEnabled(): boolean {
+  return !!process.env.HR_PASSWORD;
+}
+
+/**
+ * True when the HR persona may be used: the HR cookie is present, or no HR_PASSWORD is configured
+ * on a local machine. On Vercel (production/preview), HR stays locked until HR_PASSWORD is set,
+ * so real HR data can never be exposed by a missing setting.
+ */
+export function hrUnlocked(req: http.IncomingMessage): boolean {
+  if (!hrGateEnabled()) return !process.env.VERCEL;
+  const cookie = (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${HR_COOKIE}=`));
+  return !!cookie && safeEqual(cookie.slice(HR_COOKIE.length + 1), token(process.env.HR_PASSWORD!));
+}
+
+export function checkHrPassword(password: unknown): boolean {
+  return hrGateEnabled() && typeof password === "string" && safeEqual(password, process.env.HR_PASSWORD!);
+}
+
+export function hrCookie(req: http.IncomingMessage): string {
+  const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return `${HR_COOKIE}=${token(process.env.HR_PASSWORD!)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${12 * 3600}${secure}`;
+}

@@ -64,3 +64,14 @@ test("estimates flag full scans but not narrow queries", { skip: !up && "ClickHo
 test("readonly setting blocks writes even if the guard were bypassed", { skip: !up && "ClickHouse not running" }, async () => {
   await assert.rejects(ch.query("CREATE TABLE pulse.should_not_exist (x UInt8) ENGINE = Memory"));
 });
+
+test("persona database access: HR data only for HR, brain.state never, aliases ignored", () => {
+  const general = ["pulse", "brain"];
+  const hr = ["pulse", "hr", "brain"];
+  assert.equal(ch.checkDatabaseAccess("SELECT e.workspace_id FROM pulse.events AS e", general), null);
+  assert.notEqual(ch.checkDatabaseAccess("SELECT * FROM hr.reviews", general), null);
+  assert.notEqual(ch.checkDatabaseAccess("SELECT * FROM `hr`.`employees`", general), null);
+  assert.equal(ch.checkDatabaseAccess("SELECT * FROM hr.reviews r JOIN hr.employees e ON r.subject_id = e.employee_id", hr), null);
+  assert.notEqual(ch.checkDatabaseAccess("SELECT * FROM brain.state", hr), null);
+  assert.equal(ch.checkDatabaseAccess("SELECT avg(latency_ms) FROM brain.traces", general), null);
+});

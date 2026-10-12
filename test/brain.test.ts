@@ -61,3 +61,9 @@ test("chunks are heading-aware and bounded", () => {
   assert.ok(chunks.some((c) => c.heading === "Meals"));
   for (const c of chunks) assert.ok(c.text.length <= 2000);
 });
+
+test("HR persona sees HR documents and HR data; others don't", () => {
+  const hr = kb.getPersona("hr");
+  assert.ok(hr.databases.includes("hr"));
+  for (const id of ["engineer", "manager", "support", "sales", "newhire"]) assert.ok(!kb.getPersona(id).databases.includes("hr"), id);
+});

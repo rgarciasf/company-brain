@@ -65,22 +65,30 @@ export interface DataContext {
   signal?: AbortSignal;
   emit: (event: string, data: unknown) => void;
   requestApproval: (req: ApprovalRequest) => Promise<boolean>;
+  /** Databases this persona may query (enforced in the app and, when configured, by ClickHouse grants). */
+  databases: string[];
 }
 
-export function loadSkills(): { name: string; content: string }[] {
+const credsFor = (databases: string[]) => ch.readerCredentials(databases.includes("hr"));
+
+/** Skills are context packets for the analyst; `hr-*.md` skills load only for personas with HR data access. */
+export function loadSkills(databases: string[] = [ch.ANALYTICS_DB, "hr"]): { name: string; content: string }[] {
   if (!fs.existsSync(SKILLS_DIR)) return [];
   return fs
     .readdirSync(SKILLS_DIR)
-    .filter((f) => f.endsWith(".md"))
+    .filter((f) => f.endsWith(".md") && (!f.startsWith("hr-") || databases.includes("hr")))
     .sort()
     .map((f) => ({ name: f.replace(/\.md$/, ""), content: fs.readFileSync(path.join(SKILLS_DIR, f), "utf8").trim() }));
 }
 
-function systemPrompt(): string {
-  const skills = loadSkills()
+function systemPrompt(databases: string[]): string {
+  const skills = loadSkills(databases)
     .map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
     .join("\n\n");
-  return `You are the data analyst sub-agent of the company's Company Brain. You answer one data question by querying the ClickHouse analytics database \`${ch.ANALYTICS_DB}\` and report back concise, verified findings to the main agent.
+  const dbs = databases.filter((d) => d !== "brain");
+  return `You are the data analyst sub-agent of the company's Company Brain. You answer one data question by querying ClickHouse and report back concise, verified findings to the main agent.
+
+You may query these databases: ${dbs.map((d) => `\`${d}\``).join(", ")} (plus brain.traces/spans/feedback about the Company Brain's own usage). Any other database is off-limits for this user; if the question needs it, say you don't have access.
 
 Workflow:
 1. Call list_tables to learn the schema (tables, columns, comments, row counts) unless you already know it in this conversation.
@@ -96,12 +104,12 @@ ${skills}`;
 }
 
 const TOOLS = [
-  tool("list_tables", "List tables in the analytics database with row counts, sort keys and all column names, types and comments.", {}, []),
+  tool("list_tables", "List the tables you may query, with row counts, sort keys and all column names, types and comments.", {}, []),
   tool(
     "get_distinct_values",
     "Show the most frequent values of a column (with counts). Use before filtering on any string column to catch non-standard values.",
     {
-      table: { type: "string", description: "Table name, e.g. events" },
+      table: { type: "string", description: "Table name, e.g. events (pulse) or hr.employees" },
       column: { type: "string" },
       where: { type: "string", description: "Optional SQL WHERE condition to narrow the scan, e.g. \"event_time >= '2026-09-01'\"" },
       limit: { type: "integer", description: "Max values (default 30)" },
@@ -146,47 +154,52 @@ function preview(r: { columns: { name: string }[]; rows: Record<string, unknown>
 
 const human = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n));
 
-let schemaCache: { at: number; text: string } | null = null;
+const schemaCache = new Map<string, { at: number; text: string }>();
 
 async function runTool(name: string, input: Record<string, unknown>, ctx: DataContext): Promise<ToolOutput> {
   switch (name) {
     case "list_tables": {
-      if (!schemaCache || Date.now() - schemaCache.at > 60_000) {
-        const tables = await ch.listTables();
+      const key = ctx.databases.join(",");
+      let cached = schemaCache.get(key);
+      if (!cached || Date.now() - cached.at > 60_000) {
+        const tables = await ch.listTables(ctx.databases.filter((d) => d !== "brain"));
         const text = tables
           .map(
             (t) =>
-              `## ${ch.ANALYTICS_DB}.${t.table} (${t.rows.toLocaleString()} rows; sort key: ${t.sortingKey})\n${t.comment}\n` +
+              `## ${t.database}.${t.table} (${t.rows.toLocaleString()} rows; sort key: ${t.sortingKey || "none"})\n${t.comment}\n` +
               t.columns.map((c) => `- ${c.name} ${c.type}${c.comment ? ` -- ${c.comment}` : ""}`).join("\n"),
           )
           .join("\n\n");
-        schemaCache = { at: Date.now(), text };
+        cached = { at: Date.now(), text };
+        schemaCache.set(key, cached);
       }
       ctx.emit("step", { kind: "schema", label: "Explored schema" });
-      return { content: schemaCache.text };
+      return { content: cached.text };
     }
     case "get_distinct_values": {
-      const table = String(input.table ?? "").replace(new RegExp(`^${ch.ANALYTICS_DB}\\.`), "");
+      const [dbPart, tablePart] = String(input.table ?? "").includes(".") ? String(input.table).split(".", 2) : [ch.ANALYTICS_DB, String(input.table ?? "")];
+      const db = dbPart;
+      const table = tablePart;
       const column = String(input.column ?? "");
-      if (!ch.isSafeIdentifier(table) || !ch.isSafeIdentifier(column)) return { content: "Error: invalid table or column name.", isError: true };
+      if (!ch.isSafeIdentifier(db) || !ch.isSafeIdentifier(table) || !ch.isSafeIdentifier(column)) return { content: "Error: invalid table or column name.", isError: true };
       const limit = Math.min(Math.max(Number(input.limit) || 30, 1), 200);
       const where = typeof input.where === "string" && input.where.trim() ? ` WHERE ${input.where}` : "";
-      const sql = `SELECT ${column} AS value, count() AS n FROM ${ch.ANALYTICS_DB}.${table}${where} GROUP BY value ORDER BY n DESC LIMIT ${limit}`;
-      const invalid = ch.validateReadOnly(sql);
+      const sql = `SELECT ${column} AS value, count() AS n FROM ${db}.${table}${where} GROUP BY value ORDER BY n DESC LIMIT ${limit}`;
+      const invalid = ch.validateReadOnly(sql) ?? ch.checkDatabaseAccess(sql, ctx.databases);
       if (invalid) return { content: `Error: ${invalid}`, isError: true };
-      const r = await ch.query(sql, { maxRows: limit, signal: ctx.signal });
+      const r = await ch.query(sql, { maxRows: limit, signal: ctx.signal, creds: credsFor(ctx.databases) });
       ctx.emit("step", { kind: "values", label: `Checked values of ${table}.${column}` });
       return { content: `${r.rowCount} distinct values shown (read ${human(r.rowsRead)} rows in ${r.elapsedMs} ms)\n${preview(r, limit)}` };
     }
     case "run_query": {
       const sql = String(input.sql ?? "").trim().replace(/;\s*$/, "");
       const purpose = String(input.purpose ?? "").trim();
-      const invalid = ch.validateReadOnly(sql);
+      const invalid = ch.validateReadOnly(sql) ?? ch.checkDatabaseAccess(sql, ctx.databases);
       if (invalid) return { content: `Error: ${invalid}`, isError: true };
       const id = `q${ctx.session.queries.length + 1}`;
       const rec: QueryRecord = { id, sql, purpose, columns: [], rows: [], rowCount: 0, truncated: false, elapsedMs: 0, rowsRead: 0, bytesRead: 0 };
 
-      rec.estimatedRows = await ch.estimateRows(sql);
+      rec.estimatedRows = await ch.estimateRows(sql, credsFor(ctx.databases));
       if (rec.estimatedRows && rec.estimatedRows > APPROVAL_ROWS) {
         const ok = await ctx.requestApproval({ sql, purpose, estimatedRows: rec.estimatedRows });
         rec.approval = ok ? "approved" : "denied";
@@ -204,7 +217,7 @@ async function runTool(name: string, input: Record<string, unknown>, ctx: DataCo
       }
 
       try {
-        const r = await ch.query(sql, { maxRows: KEEP_ROWS, signal: ctx.signal });
+        const r = await ch.query(sql, { maxRows: KEEP_ROWS, signal: ctx.signal, creds: credsFor(ctx.databases) });
         Object.assign(rec, { columns: r.columns, rows: r.rows, rowCount: r.rowCount, truncated: r.truncated, elapsedMs: r.elapsedMs, rowsRead: r.rowsRead, bytesRead: r.bytesRead });
       } catch (err) {
         rec.error = (err as Error).message;
@@ -250,7 +263,7 @@ export async function analyzeData(question: string, ctx: DataContext): Promise<T
       name: "data-analyst",
       model: ANALYST_MODEL,
       effort: ANALYST_EFFORT,
-      system: systemPrompt(),
+      system: systemPrompt(ctx.databases),
       tools: TOOLS,
       maxTurns: 14,
       runTool: (name, input) => runTool(name, input, ctx),
@@ -263,8 +276,8 @@ export async function analyzeData(question: string, ctx: DataContext): Promise<T
 }
 
 /** Direct SQL for the Data tab console (same safety rules, no agent). */
-export async function runConsoleQuery(sql: string) {
-  const invalid = ch.validateReadOnly(sql);
+export async function runConsoleQuery(sql: string, databases: string[]) {
+  const invalid = ch.validateReadOnly(sql) ?? ch.checkDatabaseAccess(sql, databases);
   if (invalid) throw new Error(invalid);
-  return ch.query(sql.trim().replace(/;\s*$/, ""), { maxRows: 1000 });
+  return ch.query(sql.trim().replace(/;\s*$/, ""), { maxRows: 1000, creds: credsFor(databases) });
 }

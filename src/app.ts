@@ -14,6 +14,7 @@ import * as reports from "./reports.ts";
 import * as state from "./state.ts";
 import * as auth from "./auth.ts";
 import { ANALYST_MODEL, loadSkills, runConsoleQuery } from "./analyst.ts";
+import * as org from "./org.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, "..", "web");
@@ -128,7 +129,24 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       await init();
       await kb.ensureFresh();
     }
-    const persona = kb.getPersona(url.searchParams.get("persona"));
+    if (p === "/api/hr-unlock" && req.method === "POST") {
+      const body = await readBody(req);
+      if (!auth.checkHrPassword(body.password)) {
+        await new Promise((r) => setTimeout(r, 600));
+        return send(res, 401, { error: "Wrong HR password" });
+      }
+      return send(res, 200, { ok: true }, { "Set-Cookie": auth.hrCookie(req) });
+    }
+    // The HR persona needs the HR password (when HR_PASSWORD is set); otherwise fall back to an error.
+    const hrLocked = !auth.hrUnlocked(req);
+    const personaFor = (id: unknown) => {
+      const persona = kb.getPersona(id);
+      return persona.id === "hr" && hrLocked ? null : persona;
+    };
+    const requested = url.searchParams.get("persona");
+    const maybePersona = personaFor(requested);
+    if (!maybePersona && p.startsWith("/api/") && p !== "/api/status") return send(res, 403, { error: "The HR persona requires the HR password.", hrLocked: true });
+    const persona = maybePersona ?? kb.getPersona("engineer");
 
     // ---- Knowledge ----
     if (p === "/api/status" && req.method === "GET") {
@@ -144,6 +162,8 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
         traceStore: traces.traceBackend(),
         stateStore: state.stateBackend(),
         auth: auth.authEnabled(),
+        hrLocked,
+        hrAvailable: await org.orgAvailable(),
       });
     }
     if (p === "/api/documents" && req.method === "GET") return send(res, 200, kb.listDocs(persona));
@@ -160,6 +180,7 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       const entity = url.searchParams.get("entity");
       return send(res, 200, entity ? kb.exploreGraph(entity, 2) : kb.getGraph());
     }
+    if (p === "/api/org" && req.method === "GET") return send(res, 200, await org.orgChart());
     if (p === "/api/gaps" && req.method === "GET") return send(res, 200, await kb.listGaps());
     if (p === "/api/gaps/resolve" && req.method === "POST") {
       const body = await readBody(req);
@@ -208,7 +229,12 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       const emit = (event: string, data: unknown) => {
         if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
-      const askPersona = kb.getPersona(body.persona);
+      const askPersona = personaFor(body.persona);
+      if (!askPersona) {
+        emit("error", { message: "The HR persona requires the HR password." });
+        res.end();
+        return;
+      }
       const requestApproval = async (r: { sql: string; purpose: string; estimatedRows: number }) => {
         const id = randomUUID();
         await state.put("approval", id, { status: "pending", ...r, at: new Date().toISOString() });
@@ -245,14 +271,15 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
     // ---- Data (ClickHouse) ----
     if (p === "/api/data/tables" && req.method === "GET") {
       if (!(await ch.ping())) return send(res, 200, { up: false, tables: [], storage: [], skills: loadSkills() });
-      const [tables, storage] = await Promise.all([ch.listTables(), ch.storageStats()]);
+      const dbs = persona.databases.filter((d) => d !== "brain");
+      const [tables, storage] = await Promise.all([ch.listTables(dbs), ch.storageStats()]);
       const host = new URL(ch.CH_URL).host;
-      return send(res, 200, { up: true, url: host, database: ch.ANALYTICS_DB, tables, storage, skills: loadSkills() });
+      return send(res, 200, { up: true, url: host, database: dbs.join(", "), tables, storage, skills: loadSkills(persona.databases) });
     }
     if (p === "/api/data/query" && req.method === "POST") {
       const body = await readBody(req);
       try {
-        return send(res, 200, await runConsoleQuery(String(body.sql ?? "")));
+        return send(res, 200, await runConsoleQuery(String(body.sql ?? ""), persona.databases));
       } catch (err) {
         return send(res, 400, { error: (err as Error).message });
       }

@@ -19,16 +19,26 @@ const GRAPH_FILE = path.join(DATA_DIR, "graph.json");
 export interface Persona {
   id: string;
   label: string;
-  groups: string[];
+  groups: string[]; // document access groups
+  databases: string[]; // ClickHouse databases the data analyst may query
   focus: string;
 }
 
+const DATA = ["pulse", "brain"];
+
 export const PERSONAS: Persona[] = [
-  { id: "engineer", label: "Engineer", groups: ["all", "engineering"], focus: "implementation details, runbooks, commands, service ownership and dependencies" },
-  { id: "manager", label: "Manager", groups: ["all", "managers", "engineering", "sales"], focus: "decisions, timelines, owners, budget and people impact" },
-  { id: "support", label: "Support", groups: ["all", "support"], focus: "customer-facing answers, known issues, workarounds, macros and escalation paths" },
-  { id: "sales", label: "Sales", groups: ["all", "sales"], focus: "pricing, plans, discounts, competitive positioning and roadmap dates customers care about" },
-  { id: "newhire", label: "New hire", groups: ["all"], focus: "clear step-by-step explanations, where to go and who to ask" },
+  { id: "engineer", label: "Engineer", groups: ["all", "engineering"], databases: DATA, focus: "implementation details, runbooks, commands, service ownership and dependencies" },
+  { id: "manager", label: "Manager", groups: ["all", "managers", "engineering", "sales"], databases: DATA, focus: "decisions, timelines, owners, budget and people impact" },
+  { id: "support", label: "Support", groups: ["all", "support"], databases: DATA, focus: "customer-facing answers, known issues, workarounds, macros and escalation paths" },
+  { id: "sales", label: "Sales", groups: ["all", "sales"], databases: DATA, focus: "pricing, plans, discounts, competitive positioning and roadmap dates customers care about" },
+  { id: "newhire", label: "New hire", groups: ["all"], databases: DATA, focus: "clear step-by-step explanations, where to go and who to ask" },
+  {
+    id: "hr",
+    label: "HR · People & Performance",
+    groups: ["all", "hr", "managers"],
+    databases: ["pulse", "hr", "brain"],
+    focus: "people analytics: performance reviews, ratings, goals, feedback activity and org structure; aggregate by team or department first and only discuss individuals when explicitly asked",
+  },
 ];
 
 export function getPersona(id: unknown): Persona {

@@ -29,11 +29,29 @@ const SUGGESTIONS = [
   { tag: "Knowledge gap", q: "What's the parking policy at the Austin office?" },
 ];
 
+const HR_SUGGESTIONS = [
+  { tag: "Performance", q: "How are manager ratings distributed in the most recent completed review cycle?" },
+  { tag: "Self vs manager", q: "Where do self-assessments differ most from manager ratings, by department?" },
+  { tag: "Process health", q: "Which departments have the lowest review completion rates, and how many reviews are still not started?" },
+  { tag: "Competencies", q: "Which competency areas get the lowest ratings across the company?" },
+  { tag: "Goals", q: "How does goal attainment compare across departments?" },
+  { tag: "Org structure", q: "What does the org look like: departments by headcount and the average span of control for managers?" },
+  { tag: "Feedback culture", q: "Which teams give and receive the most feedback, and how much of it is anonymous?" },
+  { tag: "Org lookup", q: "Who leads the largest department and how many people managers report into it?" },
+];
+
+function renderSuggestions() {
+  const list = state.persona === "hr" ? HR_SUGGESTIONS : SUGGESTIONS;
+  const el = $("#suggestions");
+  if (el) el.innerHTML = list.map((s) => `<button data-q="${esc(s.q)}"><span class="tag">${esc(s.tag)}</span>${esc(s.q)}</button>`).join("");
+}
+
 async function api(path, opts = {}) {
   const sep = path.includes("?") ? "&" : "?";
   const r = await fetch(`${path}${sep}persona=${state.persona}`, { headers: { "Content-Type": "application/json" }, ...opts });
   if (r.status === 401) { location.reload(); throw new Error("Login required"); }
   const data = await r.json().catch(() => ({}));
+  if (r.status === 403 && data.hrLocked) { state.persona = "engineer"; $("#persona").value = "engineer"; renderSuggestions(); }
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
   return data;
 }
@@ -53,7 +71,7 @@ async function init() {
   $("#schedule-persona").innerHTML = personaOptions;
   $("#persona").value = state.persona;
   renderStats(status.stats);
-  $("#suggestions").innerHTML = SUGGESTIONS.map((s) => `<button data-q="${esc(s.q)}"><span class="tag">${esc(s.tag)}</span>${esc(s.q)}</button>`).join("");
+  renderSuggestions();
   loadMemory();
   const graph = await api("/api/graph");
   $("#entity-list").innerHTML = graph.entities.map((e) => `<option value="${esc(e.name)}">${esc(e.type)}</option>`).join("");
@@ -91,7 +109,7 @@ function show(view) {
   if (view === "data") loadData();
   if (view === "traces") loadTraces();
   if (view === "reports") loadReports();
-  if (view === "graph" && !$("#graph-out").innerHTML) exploreGraph("Billing Service");
+  if (view === "graph") setGraphMode(state.graphMode ?? (state.status?.hrAvailable ? "org" : "knowledge"));
 }
 
 /* ---------------- Ask ---------------- */
@@ -548,10 +566,135 @@ $("#question").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#ask-form").requestSubmit(); }
 });
 $("#question").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; });
-$("#persona").addEventListener("change", (e) => {
-  state.persona = e.target.value;
-  store.set("brain.persona", state.persona);
+$("#persona").addEventListener("change", async (e) => {
+  const next = e.target.value;
+  if (next === "hr" && state.status?.hrLocked) {
+    e.target.value = state.persona; // stay on the current persona until unlocked
+    $("#hr-error").textContent = "";
+    $("#hr-form").reset();
+    $("#hr-dialog").showModal();
+    return;
+  }
+  setPersona(next);
+});
+
+function setPersona(id) {
+  state.persona = id;
+  $("#persona").value = id;
+  store.set("brain.persona", id);
+  renderSuggestions();
   if ($("#view-knowledge").classList.contains("active")) loadKnowledge();
+  if ($("#view-data").classList.contains("active")) loadData();
+}
+
+$("#hr-cancel").onclick = () => $("#hr-dialog").close();
+$("#hr-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const r = await fetch("/api/hr-unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: e.target.password.value }) });
+  if (!r.ok) { $("#hr-error").textContent = "Wrong HR password"; return; }
+  state.status.hrLocked = false;
+  $("#hr-dialog").close();
+  setPersona("hr");
+});
+
+/* ---------------- Org chart ---------------- */
+
+function setGraphMode(mode) {
+  state.graphMode = mode;
+  $$("[data-graph-mode]").forEach((b) => b.classList.toggle("active", b.dataset.graphMode === mode));
+  $$(".graph-org-only").forEach((el) => (el.hidden = mode !== "org"));
+  $$(".graph-knowledge-only").forEach((el) => (el.hidden = mode !== "knowledge"));
+  if (mode === "org") loadOrg();
+  else if (!$("#graph-out").innerHTML) exploreGraph("Billing Service");
+}
+$$("[data-graph-mode]").forEach((b) => (b.onclick = () => setGraphMode(b.dataset.graphMode)));
+
+const org = { people: [], byId: new Map(), children: new Map(), size: new Map(), deptColor: new Map(), loaded: false };
+
+async function loadOrg() {
+  if (org.loaded) return renderOrg();
+  const d = await api("/api/org");
+  if (!d.available) {
+    $("#org-out").innerHTML = `<p class="muted">No org data yet. Run <code>npm run hr:import</code> to import the org structure from Ascend.</p>`;
+    return;
+  }
+  org.people = d.people;
+  org.byId = new Map(d.people.map((p) => [p.id, p]));
+  for (const p of d.people) {
+    const parent = org.byId.has(p.managerId) ? p.managerId : "";
+    if (!org.children.has(parent)) org.children.set(parent, []);
+    org.children.get(parent).push(p.id);
+  }
+  const size = (id) => {
+    if (org.size.has(id)) return org.size.get(id);
+    org.size.set(id, 1);
+    const n = 1 + (org.children.get(id) ?? []).reduce((a, c) => a + size(c), 0);
+    org.size.set(id, n);
+    return n;
+  };
+  d.people.forEach((p) => size(p.id));
+  for (const kids of org.children.values()) kids.sort((a, b) => org.size.get(b) - org.size.get(a) || org.byId.get(a).name.localeCompare(org.byId.get(b).name));
+  const colors = window.BrainUI.palette();
+  const depts = [...new Set(d.people.map((p) => p.department).filter(Boolean))].sort();
+  depts.forEach((dep, i) => org.deptColor.set(dep, colors[i % colors.length]));
+  const managers = d.people.filter((p) => p.directReports > 0);
+  const avgSpan = managers.length ? (managers.reduce((a, p) => a + p.directReports, 0) / managers.length).toFixed(1) : "0";
+  $("#org-summary").textContent = `${d.people.length} active people · ${depts.length} departments · ${managers.length} people managers (avg ${avgSpan} direct reports). Names are pseudonyms; performance data is HR-only.`;
+  org.loaded = true;
+  renderOrg();
+}
+
+function orgNodeHtml(id, depth, expandTo) {
+  const p = org.byId.get(id);
+  const kids = org.children.get(id) ?? [];
+  const open = depth < 1 || expandTo?.has(id);
+  const color = org.deptColor.get(p.department) ?? "var(--muted)";
+  return `<div class="org-node" data-org="${id}">
+    <div class="org-row"><span class="org-toggle">${kids.length ? (open ? "▾" : "▸") : ""}</span><span class="org-dept" style="background:${color}" title="${esc(p.department)}"></span>
+      <span class="org-name">${esc(p.name)}</span><span class="org-title">${esc(p.title)}${p.team ? ` · ${esc(p.team)}` : ""}</span>
+      <span class="org-count">${kids.length ? `${kids.length} direct · ${org.size.get(id) - 1} total` : ""}</span></div>
+    ${kids.length && open ? `<div class="org-children">${kids.map((k) => orgNodeHtml(k, depth + 1, expandTo)).join("")}</div>` : ""}
+  </div>`;
+}
+
+function renderOrg(expandTo, highlight) {
+  const roots = org.children.get("") ?? [];
+  roots.sort((a, b) => org.size.get(b) - org.size.get(a));
+  $("#org-out").innerHTML = roots.map((r) => orgNodeHtml(r, 0, expandTo)).join("") || `<p class="muted">No people.</p>`;
+  if (highlight) {
+    const el = $(`.org-node[data-org="${highlight}"]`);
+    el?.classList.add("match");
+    el?.scrollIntoView({ block: "center" });
+  }
+}
+
+$("#org-out").addEventListener("click", (e) => {
+  const row = e.target.closest(".org-row");
+  if (!row) return;
+  const node = row.parentElement;
+  const id = node.dataset.org;
+  const kids = org.children.get(id) ?? [];
+  if (!kids.length) return;
+  const existing = node.querySelector(":scope > .org-children");
+  if (existing) { existing.remove(); row.querySelector(".org-toggle").textContent = "▸"; return; }
+  const depth = 1;
+  node.insertAdjacentHTML("beforeend", `<div class="org-children">${kids.map((k) => orgNodeHtml(k, depth + 1)).join("")}</div>`);
+  row.querySelector(".org-toggle").textContent = "▾";
+});
+
+let orgTimer;
+$("#org-q").addEventListener("input", () => {
+  clearTimeout(orgTimer);
+  orgTimer = setTimeout(() => {
+    const q = $("#org-q").value.trim().toLowerCase();
+    if (!org.loaded) return;
+    if (!q) return renderOrg();
+    const match = org.people.find((p) => p.name.toLowerCase().includes(q)) ?? org.people.find((p) => [p.title, p.team, p.department].some((f) => f.toLowerCase().includes(q)));
+    if (!match) { $("#org-out").innerHTML = `<p class="muted">No match for “${esc(q)}”.</p>`; return; }
+    const expandTo = new Set();
+    for (let m = org.byId.get(match.managerId); m && !expandTo.has(m.id); m = org.byId.get(m.managerId)) expandTo.add(m.id);
+    renderOrg(expandTo, match.id);
+  }, 200);
 });
 const closeDrawer = () => { $("#drawer").hidden = true; $("#drawer").classList.remove("wide"); };
 $("#drawer-close").onclick = closeDrawer;

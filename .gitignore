@@ -10,3 +10,4 @@ data/schedules.json
 .vercel
 data/state/
 .env*
+data/import/

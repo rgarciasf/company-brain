@@ -70,15 +70,27 @@
     <!-- GRAPH -->
     <section id="view-graph" class="view">
       <header class="view-head">
-        <h2>Knowledge graph</h2>
-        <div class="row">
+        <div class="seg" role="tablist">
+          <button class="seg-btn active" data-graph-mode="org">Org chart</button>
+          <button class="seg-btn" data-graph-mode="knowledge">Knowledge graph</button>
+        </div>
+        <div class="row graph-knowledge-only" hidden>
           <input id="graph-q" list="entity-list" placeholder="Entity, e.g. Billing Service" />
           <datalist id="entity-list"></datalist>
           <button id="graph-go" class="primary">Explore</button>
         </div>
+        <div class="row graph-org-only">
+          <input id="org-q" type="search" placeholder="Find a person, team or department…" />
+        </div>
       </header>
-      <p class="muted small">Declared entities and relationships (teams, services, people, features, incidents). The AI uses these for ownership, dependency and impact questions.</p>
-      <div id="graph-out"></div>
+      <div class="graph-org-only">
+        <p class="muted small" id="org-summary">Org structure imported from Ascend. Names are pseudonyms; performance data is only available to the HR persona.</p>
+        <div id="org-out" class="org-tree"></div>
+      </div>
+      <div class="graph-knowledge-only" hidden>
+        <p class="muted small">Declared entities and relationships (teams, services, people, features, incidents). The AI uses these for ownership, dependency and impact questions.</p>
+        <div id="graph-out"></div>
+      </div>
     </section>
 
     <!-- DATA -->
@@ -151,6 +163,16 @@ GROUP BY day ORDER BY day</textarea>
   </div>
 
   <!-- Add knowledge modal -->
+  <dialog id="hr-dialog">
+    <form id="hr-form" method="dialog">
+      <h3>HR access</h3>
+      <p class="muted small">People & performance data is restricted. Enter the HR password.</p>
+      <input type="password" name="password" placeholder="HR password" autocomplete="off" required />
+      <div class="error" id="hr-error"></div>
+      <div class="row end"><button type="button" id="hr-cancel">Cancel</button><button class="primary" type="submit">Unlock</button></div>
+    </form>
+  </dialog>
+
   <dialog id="add-dialog">
     <form id="add-form" method="dialog">
       <h3>Add knowledge</h3>
