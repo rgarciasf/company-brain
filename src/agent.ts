@@ -121,6 +121,21 @@ export async function runAgent(spec: AgentSpec, messages: Message[], opts: RunOp
         results.push({ type: "tool_result", tool_use_id: call.id, content: out.content, is_error: out.isError });
       }
       messages.push({ role: "user", content: results });
+      if (turn === (spec.maxTurns ?? 10) - 1) {
+        // Out of tool turns: ask for a final answer from what was gathered instead of ending silently.
+        const gen2 = trace.start(`${spec.name} · final answer`, "generation", agentSpan.span_id, "", spec.model);
+        messages.push({ role: "user", content: "You've used all available tool calls. Answer now with what you have, and say clearly what you couldn't determine." });
+        const stream = getClient().beta.messages.stream(
+          { model: spec.model, max_tokens: 16000, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default", output_config: { effort: spec.effort }, system: spec.system, tools: spec.tools, tool_choice: { type: "none" }, messages },
+          { signal: opts.signal },
+        );
+        if (opts.onText) stream.on("text", (delta) => opts.onText!(delta));
+        const last = await stream.finalMessage();
+        const text = last.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+        trace.end(gen2, { output: text, input_tokens: last.usage.input_tokens, output_tokens: last.usage.output_tokens, cache_read_tokens: last.usage.cache_read_input_tokens ?? 0, cache_write_tokens: last.usage.cache_creation_input_tokens ?? 0 });
+        finalText += text;
+        stopReason = last.stop_reason ?? "";
+      }
     }
     trace.end(agentSpan, { output: finalText });
     return { text: finalText, stopReason };

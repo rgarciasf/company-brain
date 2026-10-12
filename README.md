@@ -91,6 +91,22 @@ KNOWLEDGE_BACKEND=hydradb npm run eval  # A/B the answer eval against local sear
 
 On Vercel, add `KNOWLEDGE_BACKEND=hydradb` and `HYDRA_DB_API_KEY` to the environment.
 
+## HR · People & Performance (Ascend import)
+
+Real HR data from Ascend (Postgres on Neon) is imported into the ClickHouse `hr` database, **pseudonymised**:
+
+```bash
+# 1. Once: create the read-only, column-restricted role (Neon SQL Editor) — scripts/ascend-readonly-role.sql
+# 2. .env: ASCEND_DATABASE_URL=postgresql://brain_readonly:…@<direct host>/neondb?sslmode=verify-full
+npm run hr:import     # org structure, review cycles, reviews, per-question ratings, goals/KRs, feedback metadata, competencies
+npm run db:users      # least-privilege ClickHouse users: brain_reader (no hr.*) and brain_hr_reader
+```
+
+- **Privacy by construction:** the Postgres role can't read emails, phones, birthdays, password hashes, tokens or any free text (feedback, review comments, written answers, calibration notes); every person gets a stable pseudonym (salted with `ASCEND_SALT`), and real names inside team names, titles and goal titles are replaced. Disconnect any time: `DROP OWNED BY brain_readonly; DROP ROLE brain_readonly;`
+- **HR persona** ("HR · People & Performance") is the only persona whose data analyst can query `hr.*`, enforced by ClickHouse grants (`brain_hr_reader` vs `brain_reader`) and an app-level check; it loads `data/skills/hr-metrics.md` (definitions + privacy rules: aggregate first, no stats for groups under 5).
+- **Org chart** (Graph tab) and the `org_lookup` agent tool expose structure only (names, titles, teams, managers) to every persona; ratings stay HR-only.
+- **Production:** HR and the org chart stay hidden on Vercel until `HR_PASSWORD` is set there; then the HR persona asks for it as a second password.
+
 ## Deploy to Vercel
 
 **Production:** https://company-brain-mu-steel.vercel.app. Every push to `main` deploys automatically (GitHub ↔ Vercel); other branches and pull requests get preview URLs, which are behind Vercel login plus the app password and share the production ClickHouse database.
@@ -135,6 +151,9 @@ npm run typecheck
 | `KNOWLEDGE_BACKEND` | `local` | `local` or `hydradb` |
 | `HYDRA_DB_API_KEY` / `HYDRA_DB_DATABASE` / `HYDRA_DB_COLLECTION` / `HYDRA_DB_MODE` | — / `company_brain` / `knowledge` / `fast` | HydraDB backend settings |
 | `APP_PASSWORD` | — | Shared password login (required for public deployments) |
+| `HR_PASSWORD` | — | Second password for the HR persona (required on Vercel for HR/org data) |
+| `ASCEND_DATABASE_URL` / `ASCEND_SALT` | — | HR import source (read-only role) / pseudonym salt (auto-generated) |
+| `CLICKHOUSE_READER_PASSWORD` / `CLICKHOUSE_HR_READER_PASSWORD` | — | Least-privilege users for agent SQL (`npm run db:users`) |
 | `CRON_SECRET` | — | Authenticates Vercel Cron calls to `/api/cron` |
 | `COMPANY_NAME`, `PORT`, `MCP_PERSONA`, `BRAIN_OFFLINE` | `Acme`, `3000`, `engineer`, — | |
 

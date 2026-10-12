@@ -61,11 +61,29 @@ export async function orgChart() {
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
+/** Company-level overview: every department with headcount, leaders and people managers. */
+function overview(c: NonNullable<typeof cache>): string {
+  const depts = new Map<string, OrgPerson[]>();
+  for (const p of c.people) if (p.department) (depts.get(p.department) ?? depts.set(p.department, []).get(p.department)!).push(p);
+  const rows = [...depts.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([name, members]) => {
+      const ids = new Set(members.map((m) => m.id));
+      const leaders = members.filter((m) => !ids.has(m.managerId)).sort((a, b) => b.directReports - a.directReports);
+      const managers = members.filter((m) => m.directReports > 0).length;
+      const teams = new Set(members.map((m) => m.team).filter(Boolean)).size;
+      return `- ${name}: ${members.length} people, ${teams} teams, ${managers} people managers; top: ${leaders.slice(0, 2).map((l) => `${l.name} (${l.title || "no title"})`).join(", ")}`;
+    });
+  const noDept = c.people.filter((p) => !p.department).length;
+  return `Org overview: ${c.people.length} active people in ${depts.size} departments${noDept ? ` (+${noDept} without a department)` : ""}, sorted by size:\n${rows.join("\n")}`;
+}
+
 /** Resolve a person, team or department and describe its place in the org. */
 export async function lookup(query: string): Promise<string> {
   const c = await load();
   if (!c) return "Org data is not available (the HR import hasn't been run).";
   const q = norm(query);
+  if (!q || /^(org|organi[sz]ation|overview|all|company|departments?|teams?|structure|org chart)$/.test(q)) return overview(c);
   const fmt = (p: OrgPerson) => `${p.name} (${p.title || "no title"}${p.team ? `, ${p.team}` : ""}${p.department ? `, ${p.department}` : ""})`;
 
   const person = c.people.find((p) => norm(p.name) === q || p.id === query) ?? c.people.find((p) => norm(p.name).includes(q));
@@ -96,6 +114,5 @@ export async function lookup(query: string): Promise<string> {
       ...(kind === "department" ? [`Teams: ${[...new Set(members.map((m) => m.team).filter(Boolean))].slice(0, 20).join(", ")}`] : []),
     ].join("\n");
   }
-  const sample = c.people.slice(0, 5).map((p) => p.name).join(", ");
-  return `No person, team or department matching "${query}". Names are pseudonyms (e.g. ${sample}).`;
+  return `No person, team or department matching "${query}". Names are pseudonyms; use exact names from below.\n\n${overview(c)}`;
 }

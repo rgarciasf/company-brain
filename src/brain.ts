@@ -108,8 +108,8 @@ const TOOLS: Anthropic.Beta.Messages.BetaTool[] = [
   ),
   tool(
     "org_lookup",
-    "Look up the org chart (imported from Ascend; names are pseudonyms): for a person, their title, team, department, manager chain and direct reports; for a team or department, size, leaders and managers.",
-    { query: { type: "string", description: "A person's (pseudonym) name or employee id, a team name, or a department name." } },
+    "Look up the org chart (imported from Ascend; names are pseudonyms). Query \"overview\" first for all departments with headcount, leaders and people-manager counts; then a person (title, team, department, manager chain, direct reports) or a team/department (size, leaders, managers).",
+    { query: { type: "string", description: "\"overview\", or a person's (pseudonym) name / employee id, a team name, or a department name." } },
     ["query"],
   ),
   tool("remember", "Save a durable fact or preference about the current user (e.g. 'Works on the Payments team', 'Based in Lisbon') to personalise future answers.", { fact: { type: "string" } }, ["fact"]),
