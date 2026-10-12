@@ -3,24 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Company Brain</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <title>Ingestion</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
   <aside class="sidebar">
-    <div class="brand"><span class="logo">🧠</span><div><strong id="company">Company</strong> Brain<div class="muted small" id="mode">…</div></div></div>
+    <div class="brand"><img class="logo" src="/logo.svg" alt="Ingestion" /><div>Ingestion<span id="company" hidden></span><div class="muted small" id="mode">…</div></div></div>
     <nav>
-      <button class="nav active" data-view="ask">💬 Ask</button>
-      <button class="nav" data-view="knowledge">📚 Knowledge</button>
-      <button class="nav" data-view="graph">🕸️ Graph</button>
-      <button class="nav" data-view="data">📊 Data</button>
-      <button class="nav" data-view="gaps">🕳️ Gaps <span class="badge" id="gap-count">0</span></button>
-      <button class="nav" data-view="reports">🗓️ Reports</button>
-      <button class="nav" data-view="traces">🔭 Traces</button>
+      <button class="nav active" data-view="ask"><i data-lucide="message-square"></i>Ask</button>
+      <button class="nav" data-view="knowledge"><i data-lucide="book-open"></i>Knowledge</button>
+      <button class="nav" data-view="graph"><i data-lucide="network"></i>Graph</button>
+      <button class="nav" data-view="data"><i data-lucide="chart-column"></i>Data</button>
+      <button class="nav" data-view="gaps"><i data-lucide="circle-help"></i>Gaps <span class="badge" id="gap-count">0</span></button>
+      <button class="nav" data-view="reports"><i data-lucide="calendar-clock"></i>Reports</button>
+      <button class="nav" data-view="traces"><i data-lucide="telescope"></i>Traces</button>
     </nav>
     <label class="field">
       <span class="muted small">Asking as</span>
@@ -32,7 +36,7 @@
       <div class="muted small" id="index-stats"></div>
     </div>
     <div class="memory">
-      <div class="muted small">🧷 What I remember about you</div>
+      <div class="muted small"><i data-lucide="pin" class="ico-sm"></i>What I remember about you</div>
       <ul id="memory-list"></ul>
     </div>
   </aside>
@@ -60,8 +64,8 @@
         <div class="row">
           <input id="kb-search" type="search" placeholder="Search the knowledge base…" />
           <select id="kb-filter"><option value="">All sources</option></select>
-          <button id="add-btn" class="primary">+ Add knowledge</button>
-          <button id="reindex-btn" title="Re-scan data/sources">↻ Re-index</button>
+          <button id="add-btn" class="primary"><i data-lucide="plus"></i>Add knowledge</button>
+          <button id="reindex-btn" title="Re-scan data/sources"><i data-lucide="refresh-cw"></i>Re-index</button>
         </div>
       </header>
       <div id="kb-results" class="cards"></div>
@@ -104,7 +108,7 @@
 FROM pulse.events
 WHERE platform = 'android' AND event_time >= '2026-09-01'
 GROUP BY day ORDER BY day</textarea>
-        <div class="row"><button class="primary" type="submit">Run ▶</button><span class="muted small" id="sql-stats"></span></div>
+        <div class="row"><button class="primary" type="submit"><i data-lucide="play"></i>Run</button><span class="muted small" id="sql-stats"></span></div>
       </form>
       <div id="sql-out"></div>
       <h3>Tables</h3>
@@ -137,7 +141,7 @@ GROUP BY day ORDER BY day</textarea>
     <!-- TRACES -->
     <section id="view-traces" class="view">
       <header class="view-head"><h2>Traces</h2><span class="muted small" id="trace-backend"></span></header>
-      <p class="muted small">Every question is traced: agent runs, model generations (tokens, cost, time-to-first-token) and tool calls, including the data-analyst sub-agent and its SQL. 👍/👎 feedback on answers is stored with the trace for evaluation.</p>
+      <p class="muted small">Every question is traced: agent runs, model generations (tokens, cost, time-to-first-token) and tool calls, including the data-analyst sub-agent and its SQL. Helpful / not-helpful feedback on answers is stored with the trace for evaluation.</p>
       <div id="trace-stats" class="stat-cards"></div>
       <div id="traces-out"></div>
     </section>
@@ -145,7 +149,7 @@ GROUP BY day ORDER BY day</textarea>
     <!-- GAPS -->
     <section id="view-gaps" class="view">
       <header class="view-head"><h2>Knowledge gaps</h2></header>
-      <p class="muted small">Questions the Brain couldn't fully answer. Fill them by adding knowledge, then mark resolved.</p>
+      <p class="muted small">Questions Ingestion couldn't fully answer. Fill them by adding knowledge, then mark resolved.</p>
       <div id="gaps-out"></div>
     </section>
   </main>
@@ -157,7 +161,7 @@ GROUP BY day ORDER BY day</textarea>
         <div class="muted small" id="drawer-meta"></div>
         <h3 id="drawer-title"></h3>
       </div>
-      <button id="drawer-close" aria-label="Close">✕</button>
+      <button id="drawer-close" aria-label="Close"><i data-lucide="x"></i></button>
     </div>
     <div id="drawer-body" class="drawer-body md"></div>
   </div>

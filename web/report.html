@@ -3,20 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Brain Report</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <title>Ingestion report</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 </head>
 <body class="report-page">
   <main class="report">
-    <div class="report-brand"><a href="/">🧠 Company Brain</a> · shared report</div>
+    <div class="report-brand"><a href="/"><img class="logo" src="/logo.svg" alt="" />Ingestion</a> · shared report</div>
     <div id="report"><p class="muted">Loading…</p></div>
   </main>
   <div id="drawer" class="drawer" hidden>
-    <div class="drawer-head"><div><div class="muted small" id="drawer-meta"></div><h3 id="drawer-title"></h3></div><button id="drawer-close" aria-label="Close">✕</button></div>
+    <div class="drawer-head"><div><div class="muted small" id="drawer-meta"></div><h3 id="drawer-title"></h3></div><button id="drawer-close" aria-label="Close"><i data-lucide="x"></i></button></div>
     <div id="drawer-body" class="drawer-body"></div>
   </div>
   <script src="/shared.js"></script>
