@@ -1,7 +1,7 @@
-/* Company Brain UI — vanilla JS, no build step. Rendering helpers live in shared.js (BrainUI). */
+/* Ingestion (Company Brain) UI — vanilla JS, no build step. Rendering helpers live in shared.js (BrainUI). */
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
-const { esc, renderAnswer, renderChart, tableHtml, queryHtml, fmtNum } = window.BrainUI;
+const { esc, renderAnswer, renderChart, tableHtml, queryHtml, fmtNum, icon } = window.BrainUI;
 
 const store = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
@@ -64,7 +64,7 @@ async function init() {
   $$(".company-name").forEach((e) => (e.textContent = status.company));
   $("#mode").textContent =
     (status.ai ? `AI: ${status.model}` : "Search-only (no API key)") +
-    (status.clickhouse ? " · ClickHouse ✓" : " · ClickHouse ✗") +
+    (status.clickhouse ? " · ClickHouse connected" : " · ClickHouse offline") +
     (status.knowledgeBackend === "hydradb" ? " · Search: HydraDB" : "");
   const personaOptions = status.personas.map((p) => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
   $("#persona").innerHTML = personaOptions;
@@ -95,7 +95,7 @@ async function refreshStats() {
 async function loadMemory() {
   const mems = await api(`/api/memory?user=${state.userId}`);
   $("#memory-list").innerHTML = mems.length
-    ? mems.map((m) => `<li><span>${esc(m.fact)}</span><button data-forget="${m.id}" title="Forget">✕</button></li>`).join("")
+    ? mems.map((m) => `<li><span>${esc(m.fact)}</span><button data-forget="${m.id}" title="Forget" aria-label="Forget">${icon("x", "ico-sm")}</button></li>`).join("")
     : `<li class="muted small">Nothing yet. Tell me your team or role.</li>`;
 }
 
@@ -124,17 +124,19 @@ function addMessage(role, html) {
   return el;
 }
 
+/** Step chip content: a Lucide icon name and plain text (escaped when rendered). */
 function stepLabel(s) {
   switch (s.kind) {
-    case "search": return `${s.fallback ? "⚠️ " : ""}🔎 ${s.backend === "hydradb" ? "HydraDB " : ""}“${s.query}”${s.sourceTypes?.length ? ` in ${s.sourceTypes.join(", ")}` : ""} · ${s.results.length}`;
-    case "read": return `📄 Read “${s.title}”`;
-    case "graph": return `🕸️ Graph: ${s.entity} · ${s.edges.length} links`;
-    case "gap": return `🕳️ Flagged knowledge gap`;
-    case "memory": return `🧷 Remembered: ${s.fact}`;
-    case "analyst": return `🤖 ${s.label}`;
-    case "schema": return `🗂️ ${s.label}`;
-    case "values": return `🔤 ${s.label}`;
-    default: return s.label || s.kind;
+    case "search": return { icon: s.fallback ? "triangle-alert" : "search", text: `${s.backend === "hydradb" ? "HydraDB " : ""}“${s.query}”${s.sourceTypes?.length ? ` in ${s.sourceTypes.join(", ")}` : ""} · ${s.results.length}` };
+    case "read": return { icon: "file-text", text: `Read “${s.title}”` };
+    case "graph": return { icon: "network", text: `Graph: ${s.entity} · ${s.edges.length} links` };
+    case "gap": return { icon: "circle-help", text: "Flagged knowledge gap" };
+    case "memory": return { icon: "pin", text: `Remembered: ${s.fact}` };
+    case "analyst": return { icon: "bot", text: s.label };
+    case "schema": return { icon: "folder-tree", text: s.label };
+    case "values": return { icon: "whole-word", text: s.label };
+    case "org": return { icon: "list-tree", text: s.label };
+    default: return { icon: "sparkles", text: s.label || s.kind };
   }
 }
 
@@ -158,7 +160,7 @@ async function ask(question) {
   const chip = (label, cls = "", onclick) => {
     const c = document.createElement("span");
     c.className = `step ${cls}${onclick ? " clickable" : ""}`;
-    c.textContent = label;
+    c.innerHTML = `${icon(label.icon)}<span>${esc(label.text)}</span>`;
     if (onclick) c.onclick = onclick;
     trail.appendChild(c);
     return c;
@@ -214,7 +216,11 @@ async function ask(question) {
         break;
       case "query":
         msg.queries.set(data.id, data);
-        chip(data.error ? `⚠️ SQL ${data.id}: ${data.error}` : `⚡ SQL ${data.id} · ${fmtNum(data.rowsRead)} rows in ${data.elapsedMs} ms`, data.error ? "gap" : "sql", () => openQuery(data));
+        chip(
+          data.error ? { icon: "triangle-alert", text: `SQL ${data.id}: ${data.error}` } : { icon: "zap", text: `SQL ${data.id} · ${fmtNum(data.rowsRead)} rows in ${data.elapsedMs} ms` },
+          data.error ? "gap" : "sql",
+          () => openQuery(data),
+        );
         break;
       case "chart": {
         const box = document.createElement("div");
@@ -226,7 +232,7 @@ async function ask(question) {
         const card = document.createElement("div");
         card.className = "approval";
         card.dataset.id = data.id;
-        card.innerHTML = `<div><strong>⏸ Approval needed:</strong> the data analyst wants to scan ~${fmtNum(data.estimatedRows)} rows.</div>
+        card.innerHTML = `<div class="row">${icon("circle-pause")}<span><strong>Approval needed:</strong> the data analyst wants to scan ~${fmtNum(data.estimatedRows)} rows.</span></div>
           <div class="muted small">${esc(data.purpose)}</div><pre class="sql">${esc(data.sql)}</pre>
           <div class="row"><button class="primary" data-approve="${data.id}">Approve</button><button data-deny="${data.id}">Deny</button><span class="muted small">Auto-denies in ${Math.round(data.timeoutSec / 60)} min</span></div>`;
         $(".approvals", bot).appendChild(card);
@@ -235,7 +241,7 @@ async function ask(question) {
       }
       case "approval_resolved": {
         const card = $(`.approval[data-id="${data.id}"]`, bot);
-        if (card) card.outerHTML = `<div class="approval resolved">${data.approved ? "✅ Approved" : "⛔ Denied"} heavy query</div>`;
+        if (card) card.outerHTML = `<div class="approval resolved ${data.approved ? "ok" : "denied"}">${icon(data.approved ? "circle-check" : "circle-x")}<span>${data.approved ? "Approved" : "Denied"} heavy query</span></div>`;
         break;
       }
       case "delta":
@@ -247,8 +253,8 @@ async function ask(question) {
         const u = data.usage ?? {};
         $(".meta-line", bot).textContent =
           data.mode === "ai" ? `${(u.latency_ms / 1000).toFixed(1)}s · ${fmtNum(u.input_tokens + u.output_tokens)} tokens · $${(u.cost_usd ?? 0).toFixed(4)}` : data.mode;
-        $(".actions", bot).innerHTML = `<button class="small-btn" data-feedback="1" title="Helpful">👍</button><button class="small-btn" data-feedback="-1" title="Not helpful">👎</button>
-          <button class="small-btn" data-share>🔗 Share report</button><button class="small-btn" data-open-trace="${data.traceId}">🔭 Trace</button>`;
+        $(".actions", bot).innerHTML = `<button class="small-btn" data-feedback="1" title="Helpful" aria-label="Helpful">${icon("thumbs-up")}</button><button class="small-btn" data-feedback="-1" title="Not helpful" aria-label="Not helpful">${icon("thumbs-down")}</button>
+          <button class="small-btn" data-share>${icon("share-2")}Share report</button><button class="small-btn" data-open-trace="${data.traceId}">${icon("telescope")}Trace</button>`;
         break;
       }
       case "error":
@@ -275,7 +281,7 @@ async function openDoc(docId, highlightChunk) {
   openDrawer("Loading…", "", "");
   try {
     const doc = await api(`/api/document?id=${encodeURIComponent(docId)}`);
-    const meta = [doc.sourceType, doc.owner, doc.updated && `updated ${doc.updated}`, doc.status, doc.access.includes("all") ? null : `🔒 ${doc.access.join(", ")}`].filter(Boolean).map(esc).join(" · ");
+    const meta = [doc.sourceType, doc.owner, doc.updated && `updated ${doc.updated}`, doc.status, doc.access.includes("all") ? null : `Restricted to ${doc.access.join(", ")}`].filter(Boolean).map(esc).join(" · ");
     const body = doc.chunks
       .map((c) => `<div class="chunk ${c.id === highlightChunk ? "hl" : ""}" id="chunk-${c.id}">${c.heading ? `<div class="chunk-h">${esc(c.heading)}<span class="chunk-id">${c.id}</span></div>` : ""}${DOMPurify.sanitize(marked.parse(c.text))}</div>`)
       .join("");
@@ -304,7 +310,7 @@ async function loadKnowledge() {
   out.innerHTML = docs
     .filter((d) => !filter || d.sourceType === filter)
     .map((d) => `<div class="card ${d.locked ? "locked" : ""}" data-doc="${d.locked ? "" : esc(d.id)}">
-      <div class="row"><span class="pill">${esc(d.sourceType)}</span>${d.updated ? `<span class="pill">${esc(d.updated)}</span>` : ""}${d.status === "superseded" ? `<span class="pill superseded">superseded</span>` : ""}${d.access.includes("all") ? "" : `<span class="pill lock">🔒 ${esc(d.access.join(", "))}</span>`}</div>
+      <div class="row"><span class="pill">${esc(d.sourceType)}</span>${d.updated ? `<span class="pill">${esc(d.updated)}</span>` : ""}${d.status === "superseded" ? `<span class="pill superseded">superseded</span>` : ""}${d.access.includes("all") ? "" : `<span class="pill lock">${icon("lock", "ico-sm")}${esc(d.access.join(", "))}</span>`}</div>
       <h4>${esc(d.title)}</h4>
       <div class="preview">${d.locked ? "Restricted for your current persona." : esc(d.preview)}</div>
       ${d.owner ? `<div class="muted small">${esc(d.owner)}</div>` : ""}</div>`)
@@ -361,7 +367,7 @@ const mb = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixe
 
 async function loadData() {
   const d = await api("/api/data/tables");
-  $("#ch-status").textContent = d.up ? `ClickHouse ✓ ${d.url} · database ${d.database}` : "ClickHouse not running";
+  $("#ch-status").textContent = d.up ? `ClickHouse connected · ${d.url} · database ${d.database}` : "ClickHouse not running";
   if (!d.up) {
     $("#storage-cards").innerHTML = `<p class="error">ClickHouse is not reachable. Run <code>npm run db:install</code> and restart.</p>`;
     return;
@@ -406,9 +412,9 @@ async function loadTraces() {
     <div class="stat"><div class="stat-v">${((s.p95_latency_ms ?? 0) / 1000).toFixed(1)}s</div><div class="muted small">p95 latency</div></div>
     <div class="stat"><div class="stat-v">$${Number(s.total_cost_usd ?? 0).toFixed(3)}</div><div class="muted small">total cost</div></div>`;
   $("#traces-out").innerHTML = d.traces.length
-    ? `<div class="table-wrap"><table class="data clickable-rows"><thead><tr><th>When</th><th>Question</th><th>Source</th><th>Persona</th><th>Mode</th><th class="n">Latency</th><th class="n">Tokens</th><th class="n">Cost</th><th class="n">Tools</th><th>👍/👎</th></tr></thead><tbody>
+    ? `<div class="table-wrap"><table class="data clickable-rows"><thead><tr><th>When</th><th>Question</th><th>Source</th><th>Persona</th><th>Mode</th><th class="n">Latency</th><th class="n">Tokens</th><th class="n">Cost</th><th class="n">Tools</th><th>Feedback</th></tr></thead><tbody>
       ${d.traces.map((t) => `<tr data-open-trace="${t.trace_id}"><td>${esc(new Date(t.created_at.replace(" ", "T") + (t.created_at.endsWith("Z") ? "" : "Z")).toLocaleString())}</td><td>${esc(t.question.slice(0, 90))}</td><td>${esc(t.source)}</td><td>${esc(t.persona)}</td><td>${esc(t.mode)}</td>
-        <td class="n">${(t.latency_ms / 1000).toFixed(1)}s</td><td class="n">${fmtNum(t.input_tokens + t.output_tokens)}</td><td class="n">$${Number(t.cost_usd).toFixed(4)}</td><td class="n">${t.tool_calls}</td><td>${t.feedback > 0 ? "👍" : t.feedback < 0 ? "👎" : ""}</td></tr>`).join("")}
+        <td class="n">${(t.latency_ms / 1000).toFixed(1)}s</td><td class="n">${fmtNum(t.input_tokens + t.output_tokens)}</td><td class="n">$${Number(t.cost_usd).toFixed(4)}</td><td class="n">${t.tool_calls}</td><td>${t.feedback > 0 ? `${icon("thumbs-up", "ico-sm")} helpful` : t.feedback < 0 ? `${icon("thumbs-down", "ico-sm")} not helpful` : ""}</td></tr>`).join("")}
       </tbody></table></div>`
     : `<p class="muted">No traces yet. Ask a question first.</p>`;
 }
@@ -427,7 +433,7 @@ async function openTrace(id) {
       const left = ((parse(s) - t0) / total) * 100;
       const width = Math.max((s.duration_ms / total) * 100, 0.4);
       const info = s.kind === "generation" ? `${fmtNum(s.input_tokens + s.cache_read_tokens)} in / ${fmtNum(s.output_tokens)} out · $${Number(s.cost_usd).toFixed(4)}${s.ttft_ms ? ` · TTFT ${s.ttft_ms} ms` : ""}` : "";
-      return `<div class="span-row" data-span="${i}"><div class="span-name" style="padding-left:${d(s) * 14}px"><span class="kind ${s.kind}">${s.kind}</span> ${esc(s.name)}${s.status === "error" ? " ⚠️" : ""}</div>
+      return `<div class="span-row" data-span="${i}"><div class="span-name" style="padding-left:${d(s) * 14}px"><span class="kind ${s.kind}">${s.kind}</span> ${esc(s.name)}${s.status === "error" ? ` ${icon("triangle-alert", "ico-sm")}` : ""}</div>
         <div class="span-bar-wrap"><div class="span-bar ${s.kind}" style="left:${left}%;width:${width}%"></div></div><div class="span-dur">${s.duration_ms} ms</div></div>
         <div class="span-detail" hidden><div class="muted small">${esc(s.model)} ${info}</div><div class="io"><div><div class="muted small">Input</div><pre>${esc(s.input)}</pre></div><div><div class="muted small">Output</div><pre>${esc(s.output)}</pre></div></div></div>`;
     })
@@ -446,12 +452,12 @@ async function openTrace(id) {
 async function loadReports() {
   const [schedules, reports] = await Promise.all([api("/api/schedules"), api("/api/reports")]);
   $("#schedules-out").innerHTML = schedules.length
-    ? schedules.map((s) => `<div class="gap-row"><div class="count">🗓️</div><div class="grow"><div class="q">${esc(s.title)}</div>
+    ? schedules.map((s) => `<div class="gap-row"><div class="count">${icon("calendar-clock")}</div><div class="grow"><div class="q">${esc(s.title)}</div>
         <div class="muted small">${esc(s.frequency === "minutes" ? `every ${s.minutes} min` : s.frequency === "hourly" ? "hourly" : `${s.frequency} at ${s.time}`)} · as ${esc(s.persona)} · next ${new Date(s.nextRun).toLocaleString()}${s.lastRun ? ` · last ${new Date(s.lastRun).toLocaleString()} (${esc(s.lastStatus)})` : ""}</div></div>
         ${s.lastReportId ? `<a class="small-btn" href="/r/${s.lastReportId}" target="_blank">Last report</a>` : ""}<button class="small-btn" data-run-schedule="${s.id}">Run now</button><button class="small-btn" data-del-schedule="${s.id}">Delete</button></div>`).join("")
     : `<p class="muted small">No scheduled questions yet.</p>`;
   $("#reports-out").innerHTML = reports.length
-    ? reports.map((r) => `<a class="gap-row report-link" href="/r/${r.id}" target="_blank"><div class="count">${r.source === "schedule" ? "🗓️" : "🔗"}</div><div class="grow"><div class="q">${esc(r.title)}</div>
+    ? reports.map((r) => `<a class="gap-row report-link" href="/r/${r.id}" target="_blank"><div class="count">${icon(r.source === "schedule" ? "calendar-clock" : "link")}</div><div class="grow"><div class="q">${esc(r.title)}</div>
         <div class="muted small">${new Date(r.createdAt).toLocaleString()} · ${r.queries} queries · ${r.charts} charts · as ${esc(r.persona)}</div></div></a>`).join("")
     : `<p class="muted small">No reports yet. Use “Share report” under an answer.</p>`;
 }
@@ -477,7 +483,7 @@ async function loadGaps() {
         <div class="grow"><div class="q">${esc(g.question)}</div><div class="muted small">${esc(g.reason)}</div>
         <div class="muted small">asked by ${esc(g.persona)} · last ${new Date(g.lastAsked).toLocaleString()}</div></div>
         ${g.resolved ? `<span class="pill">resolved</span>` : `<button data-fill="${esc(g.question)}">Add answer</button><button data-resolve="${g.id}">Resolve</button>`}</div>`).join("")
-    : `<p class="muted">No gaps yet. 🎉 Ask something the knowledge base doesn't cover to see one appear.</p>`;
+    : `<p class="muted">No gaps yet. Ask something the knowledge base doesn't cover to see one appear.</p>`;
 }
 
 /* ---------------- Add knowledge ---------------- */
@@ -531,7 +537,7 @@ document.addEventListener("click", async (e) => {
       const r = await api("/api/reports", { method: "POST", body: JSON.stringify({ traceId: msg.traceId }) });
       const link = location.origin + r.url;
       navigator.clipboard?.writeText(link).catch(() => {});
-      t.outerHTML = `<a class="small-btn" href="${r.url}" target="_blank">✅ Report: ${esc(r.url)}</a>`;
+      t.outerHTML = `<a class="small-btn" href="${r.url}" target="_blank">${icon("circle-check")}Report: ${esc(r.url)}</a>`;
     } catch (err) {
       t.disabled = false;
       alert(err.message);
@@ -650,7 +656,7 @@ function orgNodeHtml(id, depth, expandTo) {
   const open = depth < 1 || expandTo?.has(id);
   const color = org.deptColor.get(p.department) ?? "var(--muted)";
   return `<div class="org-node" data-org="${id}">
-    <div class="org-row"><span class="org-toggle">${kids.length ? (open ? "▾" : "▸") : ""}</span><span class="org-dept" style="background:${color}" title="${esc(p.department)}"></span>
+    <div class="org-row"><span class="org-toggle">${kids.length ? icon(open ? "chevron-down" : "chevron-right") : ""}</span><span class="org-dept" style="background:${color}" title="${esc(p.department)}"></span>
       <span class="org-name">${esc(p.name)}</span><span class="org-title">${esc(p.title)}${p.team ? ` · ${esc(p.team)}` : ""}</span>
       <span class="org-count">${kids.length ? `${kids.length} direct · ${org.size.get(id) - 1} total` : ""}</span></div>
     ${kids.length && open ? `<div class="org-children">${kids.map((k) => orgNodeHtml(k, depth + 1, expandTo)).join("")}</div>` : ""}
@@ -676,10 +682,10 @@ $("#org-out").addEventListener("click", (e) => {
   const kids = org.children.get(id) ?? [];
   if (!kids.length) return;
   const existing = node.querySelector(":scope > .org-children");
-  if (existing) { existing.remove(); row.querySelector(".org-toggle").textContent = "▸"; return; }
+  if (existing) { existing.remove(); row.querySelector(".org-toggle").innerHTML = icon("chevron-right"); return; }
   const depth = 1;
   node.insertAdjacentHTML("beforeend", `<div class="org-children">${kids.map((k) => orgNodeHtml(k, depth + 1)).join("")}</div>`);
-  row.querySelector(".org-toggle").textContent = "▾";
+  row.querySelector(".org-toggle").innerHTML = icon("chevron-down");
 });
 
 let orgTimer;

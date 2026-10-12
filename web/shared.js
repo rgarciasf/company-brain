@@ -7,9 +7,25 @@
     light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
     dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
   };
-  const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+  // The Ingestion UI is light-only, so charts always use the light steps on the paper/white surfaces.
+  const isDark = () => false;
   const palette = () => (isDark() ? PALETTE.dark : PALETTE.light);
-  const ink = () => (isDark() ? { text: "#c3c2b7", grid: "rgba(255,255,255,.08)", axis: "rgba(255,255,255,.25)" } : { text: "#52514e", grid: "rgba(0,0,0,.06)", axis: "rgba(0,0,0,.25)" });
+  const ink = () => (isDark() ? { text: "#c3c2b7", grid: "rgba(255,255,255,.08)", axis: "rgba(255,255,255,.25)" } : { text: "#475569", grid: "rgba(15,23,42,.06)", axis: "rgba(15,23,42,.2)" });
+
+  // Lucide icons: markup uses <i data-lucide="name">, rendered to inline SVG whenever new ones appear.
+  const icon = (name, cls = "") => `<i data-lucide="${name}"${cls ? ` class="${cls}"` : ""} aria-hidden="true"></i>`;
+  let iconFrame = 0;
+  const renderIcons = () => {
+    iconFrame = 0;
+    if (window.lucide && document.querySelector("i[data-lucide]")) window.lucide.createIcons({ attrs: { "aria-hidden": "true" } });
+  };
+  const scheduleIcons = () => { if (!iconFrame) iconFrame = requestAnimationFrame(renderIcons); };
+  const startIcons = () => {
+    renderIcons();
+    new MutationObserver(scheduleIcons).observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startIcons);
+  else startIcons();
 
   const num = (v) => (typeof v === "number" ? v : Number(v));
   const fmtNum = (v, unit) => {
@@ -43,7 +59,7 @@
         const item = lookup(id);
         if (!item) return "";
         if (id.startsWith("q")) {
-          return `<div class="ref" data-cite="${id}"><span class="num q">${i + 1}</span><span>📊 ${esc(item.purpose || "Query")}</span><span class="pill">SQL ${esc(id)}</span><span class="pill">${fmtNum(item.rowsRead)} rows scanned · ${item.elapsedMs} ms</span></div>`;
+          return `<div class="ref" data-cite="${id}"><span class="num q">${i + 1}</span><span>${icon("database", "ico-sm")} ${esc(item.purpose || "Query")}</span><span class="pill">SQL ${esc(id)}</span><span class="pill">${fmtNum(item.rowsRead)} rows scanned · ${item.elapsedMs} ms</span></div>`;
         }
         return `<div class="ref" data-cite="${id}"><span class="num">${i + 1}</span><span>${esc(item.title)}${item.heading ? ` › ${esc(item.heading)}` : ""}</span>
           <span class="pill">${esc(item.sourceType)}</span>${item.updated ? `<span class="pill">${esc(item.updated)}</span>` : ""}${item.status === "superseded" ? `<span class="pill superseded">superseded</span>` : ""}</div>`;
@@ -162,10 +178,10 @@
   function queryHtml(q) {
     const stats = q.error
       ? `<div class="error">${esc(q.error)}</div>`
-      : `<div class="muted small">${q.rowCount?.toLocaleString?.() ?? 0} rows · scanned ${fmtNum(q.rowsRead)} rows (${fmtNum(q.bytesRead)}B) in ${q.elapsedMs} ms${q.approval === "approved" ? " · ✅ approved by user" : ""}</div>`;
+      : `<div class="muted small">${q.rowCount?.toLocaleString?.() ?? 0} rows · scanned ${fmtNum(q.rowsRead)} rows (${fmtNum(q.bytesRead)}B) in ${q.elapsedMs} ms${q.approval === "approved" ? ` · ${icon("circle-check", "ico-sm")} approved by user` : ""}</div>`;
     return `<div class="query-block"><div class="query-head"><strong>${esc(q.id)}</strong> <span>${esc(q.purpose || "")}</span></div>
       <pre class="sql">${esc(q.sql)}</pre>${stats}${q.rows?.length ? tableHtml(q.columns, q.rows, 50) : ""}</div>`;
   }
 
-  window.BrainUI = { esc, renderAnswer, renderChart, tableHtml, queryHtml, fmtNum, palette };
+  window.BrainUI = { esc, renderAnswer, renderChart, tableHtml, queryHtml, fmtNum, palette, icon };
 })();
