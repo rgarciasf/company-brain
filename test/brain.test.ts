@@ -6,8 +6,8 @@ import * as kb from "../src/kb.ts";
 const engineer = kb.getPersona("engineer");
 const manager = kb.getPersona("manager");
 
-before(() => {
-  kb.reload();
+before(async () => {
+  await kb.reload();
 });
 
 // Cross-source questions -> the document that must appear in the top 3 results.

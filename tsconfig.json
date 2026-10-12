@@ -6,10 +6,11 @@
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "scripts"]
+  "include": ["src", "test", "scripts", "api"]
 }

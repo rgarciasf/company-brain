@@ -105,8 +105,8 @@ const TOOLS: Anthropic.Beta.Messages.BetaTool[] = [
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
-function userContext(ctx: AskInput): string {
-  const memories = kb.getMemories(ctx.userId);
+async function userContext(ctx: AskInput): Promise<string> {
+  const memories = await kb.getMemories(ctx.userId);
   const lines = [`Today's date: ${new Date().toISOString().slice(0, 10)}`, `User persona: ${ctx.persona.label} (emphasise ${ctx.persona.focus}).`];
   if (memories.length) lines.push(`What you remember about this user:\n${memories.map((m) => `- ${m.fact}`).join("\n")}`);
   return `<user_context>\n${lines.join("\n")}\n</user_context>\n\n${ctx.question}`;
@@ -128,7 +128,7 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
     return { traceId: trace.id, answer, mode, session, steps, usage };
   };
 
-  if (!aiEnabled()) return done(offlineAnswer(ctx, emit, trace, "No Anthropic API key configured"), "offline");
+  if (!aiEnabled()) return done(await offlineAnswer(ctx, emit, trace, "No Anthropic API key configured"), "offline");
 
   let answer = "";
   const runTool = async (name: string, input: Record<string, unknown>, span: { span_id: string }): Promise<ToolOutput> => {
@@ -176,14 +176,14 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
         const question = str(input.question);
         if (!question) return { content: "Error: 'question' is required.", isError: true };
         const reason = str(input.reason) ?? "Not covered by the knowledge base.";
-        const gap = kb.flagGap(question, reason, ctx.persona.id);
+        const gap = await kb.flagGap(question, reason, ctx.persona.id);
         emit("step", { kind: "gap", question, reason, count: gap.count });
         return { content: `Gap recorded (asked ${gap.count} time(s)).` };
       }
       case "remember": {
         const fact = str(input.fact);
         if (!fact) return { content: "Error: 'fact' is required.", isError: true };
-        kb.remember(ctx.userId, fact);
+        await kb.remember(ctx.userId, fact);
         emit("step", { kind: "memory", fact });
         return { content: "Saved." };
       }
@@ -192,7 +192,7 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
     }
   };
 
-  const messages: Message[] = [...ctx.history.slice(-8).map((m) => ({ role: m.role, content: m.content })), { role: "user", content: userContext(ctx) }];
+  const messages: Message[] = [...ctx.history.slice(-8).map((m) => ({ role: m.role, content: m.content })), { role: "user", content: await userContext(ctx) }];
   try {
     await runAgent(
       { name: "company-brain", model: MODEL, effort: EFFORT, system: SYSTEM, tools: TOOLS, runTool, maxTurns: 10 },
@@ -209,8 +209,8 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
     return done(answer, "ai");
   } catch (err) {
     if (err instanceof Anthropic.APIUserAbortError || ctx.signal?.aborted) return done(answer, "error");
-    if (err instanceof Anthropic.AuthenticationError) return done(offlineAnswer(ctx, emit, trace, "Anthropic API key was rejected"), "offline");
-    if (err instanceof Anthropic.APIConnectionError) return done(offlineAnswer(ctx, emit, trace, "Could not reach the Anthropic API"), "offline");
+    if (err instanceof Anthropic.AuthenticationError) return done(await offlineAnswer(ctx, emit, trace, "Anthropic API key was rejected"), "offline");
+    if (err instanceof Anthropic.APIConnectionError) return done(await offlineAnswer(ctx, emit, trace, "Could not reach the Anthropic API"), "offline");
     const message =
       err instanceof Anthropic.RateLimitError
         ? "Rate limited by the Anthropic API. Try again in a moment."
@@ -223,7 +223,7 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
 }
 
 /** Search-only answer: shows the best passages and graph facts, citing them. */
-function offlineAnswer(ctx: AskInput, emit: Emit, trace: Trace, why: string): string {
+async function offlineAnswer(ctx: AskInput, emit: Emit, trace: Trace, why: string): Promise<string> {
   const span = trace.start("search_knowledge", "tool", "", { query: ctx.question });
   const hits = kb.search(ctx.question, ctx.persona, { limit: 5 });
   trace.end(span, { output: hits.map((h) => h.chunk.id).join(", ") });
@@ -243,7 +243,7 @@ function offlineAnswer(ctx: AskInput, emit: Emit, trace: Trace, why: string): st
   let md = `> **Search-only mode** (${why}). Set \`ANTHROPIC_API_KEY\` to get synthesised AI answers and data analysis.\n\n`;
   if (!hits.length) {
     md += "I couldn't find anything relevant in the knowledge base.";
-    kb.flagGap(ctx.question, "No search results (offline mode).", ctx.persona.id);
+    await kb.flagGap(ctx.question, "No search results (offline mode).", ctx.persona.id);
     emit("step", { kind: "gap", question: ctx.question, reason: "No search results." });
   } else {
     md += "**Most relevant passages:**\n\n";

@@ -7,3 +7,6 @@ data/traces.jsonl
 data/feedback.jsonl
 data/reports/
 data/schedules.json
+.vercel
+data/state/
+.env*

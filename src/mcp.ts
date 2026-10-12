@@ -16,8 +16,10 @@ const ch = await import("./clickhouse.ts");
 const { ask, aiEnabled, chunkMeta } = await import("./brain.ts");
 const { runConsoleQuery } = await import("./analyst.ts");
 const { initTraceStore } = await import("./trace.ts");
+const { initState } = await import("./state.ts");
 
-kb.reload();
+await initState();
+await kb.reload();
 const persona = kb.getPersona(process.env.MCP_PERSONA ?? "engineer");
 await ch.ensureServer((m) => console.error(m));
 await initTraceStore();

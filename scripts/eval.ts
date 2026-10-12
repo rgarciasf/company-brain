@@ -9,6 +9,7 @@ const { ask, aiEnabled } = await import("../src/brain.ts");
 const kb = await import("../src/kb.ts");
 const ch = await import("../src/clickhouse.ts");
 const { initTraceStore } = await import("../src/trace.ts");
+const { initState } = await import("../src/state.ts");
 
 interface Case { q: string; persona: string; mustInclude: (string | RegExp)[]; mustCite?: string; mustCiteData?: boolean }
 
@@ -31,9 +32,10 @@ if (!aiEnabled()) {
   process.exit(1);
 }
 
-kb.reload();
 await ch.ensureServer();
+await initState();
 await initTraceStore();
+await kb.reload();
 let passed = 0;
 for (const c of CASES) {
   let answer = "";

@@ -1,0 +1,6 @@
+.clickhouse
+data/state
+.env
+.env.*
+!.env.example
+test

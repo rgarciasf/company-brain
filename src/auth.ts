@@ -1,0 +1,47 @@
+// Optional shared-password login. When APP_PASSWORD is set, every page and API call requires a
+// session cookie obtained by POST /api/login. The cookie holds an HMAC of the password, so changing
+// APP_PASSWORD logs everyone out. Without APP_PASSWORD (local dev) the app is open.
+import { createHmac, timingSafeEqual } from "node:crypto";
+import type http from "node:http";
+
+const COOKIE = "brain_session";
+const MAX_AGE = 30 * 24 * 3600;
+
+export function authEnabled(): boolean {
+  return !!process.env.APP_PASSWORD;
+}
+
+function token(password: string): string {
+  return createHmac("sha256", password).update("company-brain-session-v1").digest("base64url");
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+
+export function isAuthed(req: http.IncomingMessage): boolean {
+  if (!authEnabled()) return true;
+  const cookie = (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`));
+  return !!cookie && safeEqual(cookie.slice(COOKIE.length + 1), token(process.env.APP_PASSWORD!));
+}
+
+export function checkPassword(password: unknown): boolean {
+  return authEnabled() && typeof password === "string" && safeEqual(password, process.env.APP_PASSWORD!);
+}
+
+export function sessionCookie(req: http.IncomingMessage): string {
+  const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return `${COOKIE}=${token(process.env.APP_PASSWORD!)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE}${secure}`;
+}
+
+export function clearCookie(): string {
+  return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+/** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. */
+export function isCron(req: http.IncomingMessage): boolean {
+  const secret = process.env.CRON_SECRET;
+  return !!secret && safeEqual(String(req.headers.authorization ?? ""), `Bearer ${secret}`);
+}

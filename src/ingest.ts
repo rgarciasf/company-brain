@@ -1,4 +1,4 @@
-// Source connectors: turn files under data/sources/<sourceType>/ into documents and chunks.
+// Source connectors: turn files under data/sources/<sourceType>/ (and uploaded sources) into documents and chunks.
 // - .md / .markdown / .txt  -> one document, chunked by heading
 // - .json (array)           -> one document per item (support tickets, tool registries, ...)
 // - .json (object)          -> one document (rotations, configs, ...)
@@ -72,9 +72,8 @@ export function renderJson(value: unknown, indent = ""): string {
     .join("\n");
 }
 
-function loadFile(root: string, sourceType: string, file: string): Doc[] {
-  const full = path.join(root, sourceType, file);
-  const raw = fs.readFileSync(full, "utf8");
+/** Parse one source file's content into documents (also used for uploads kept in the state store). */
+export function parseSource(sourceType: string, file: string, raw: string): Doc[] {
   const base = `${sourceType}/${file.replace(/\.[^.]+$/, "")}`;
   const ext = path.extname(file).toLowerCase();
 
@@ -126,7 +125,7 @@ export function loadDocuments(root: string): Doc[] {
     for (const file of fs.readdirSync(dir).sort()) {
       if (!/\.(md|markdown|txt|json)$/i.test(file)) continue;
       try {
-        docs.push(...loadFile(root, sourceType, file));
+        docs.push(...parseSource(sourceType, file, fs.readFileSync(path.join(root, sourceType, file), "utf8")));
       } catch (err) {
         console.warn(`[ingest] skipped ${sourceType}/${file}: ${(err as Error).message}`);
       }

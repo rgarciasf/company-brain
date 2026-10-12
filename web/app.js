@@ -32,6 +32,7 @@ const SUGGESTIONS = [
 async function api(path, opts = {}) {
   const sep = path.includes("?") ? "&" : "?";
   const r = await fetch(`${path}${sep}persona=${state.persona}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (r.status === 401) { location.reload(); throw new Error("Login required"); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
   return data;

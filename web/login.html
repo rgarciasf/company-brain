@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Company Brain</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="login-page">
+  <form id="login" class="login-card">
+    <div class="logo">🧠</div>
+    <h1>Company Brain</h1>
+    <p class="muted small">This demo is password protected.</p>
+    <input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required />
+    <button class="primary" type="submit">Enter</button>
+    <div class="error" id="err"></div>
+  </form>
+  <script>
+    document.getElementById("login").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector("button");
+      btn.disabled = true;
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: e.target.password.value }) });
+      if (r.ok) location.reload();
+      else { document.getElementById("err").textContent = "Wrong password"; btn.disabled = false; }
+    });
+  </script>
+</body>
+</html>

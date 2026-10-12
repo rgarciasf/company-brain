@@ -11,7 +11,7 @@ export async function seed(log = console.log, events = Number(process.env.EVENTS
   const DB = ch.ANALYTICS_DB;
   const run = async (label: string, sql: string) => {
     const t = Date.now();
-    await ch.exec(sql, { max_execution_time: 600, max_partitions_per_insert_block: 1000 });
+    await ch.exec(sql, { max_execution_time: 600 });
     log(`   ✓ ${label} (${((Date.now() - t) / 1000).toFixed(1)}s)`);
   };
 
@@ -64,9 +64,9 @@ export async function seed(log = console.log, events = Number(process.env.EVENTS
   await run(
     "events table",
     `CREATE TABLE ${DB}.events (
-      event_time DateTime CODEC(DoubleDelta, ZSTD(1)) COMMENT 'When the event happened (UTC)',
+      event_time DateTime COMMENT 'When the event happened (UTC)' CODEC(DoubleDelta, ZSTD(1)),
       workspace_id UInt32,
-      user_id UInt64 CODEC(T64, ZSTD(1)) COMMENT 'End user inside the customer workspace',
+      user_id UInt64 COMMENT 'End user inside the customer workspace' CODEC(T64, ZSTD(1)),
       session_id UInt64 CODEC(T64, ZSTD(1)),
       event_name LowCardinality(String) COMMENT 'Product event, e.g. page_view, dashboard_view, query_run, reports_v1_view, app_crash',
       platform LowCardinality(String) COMMENT 'web, ios or android',
@@ -75,9 +75,9 @@ export async function seed(log = console.log, events = Number(process.env.EVENTS
       country LowCardinality(String) COMMENT 'ISO country code of the workspace',
       region LowCardinality(String) COMMENT 'Data residency region: us-east or eu-central',
       plan LowCardinality(String) COMMENT 'Workspace plan at event time',
-      duration_ms UInt32 CODEC(T64, ZSTD(1)) COMMENT 'Query run time / dashboard load time in ms (0 for other events)',
+      duration_ms UInt32 COMMENT 'Query run time / dashboard load time in ms (0 for other events)' CODEC(T64, ZSTD(1)),
       is_error UInt8 COMMENT '1 if the action failed',
-      ingest_delay_ms UInt32 CODEC(T64, ZSTD(1)) COMMENT 'Delay between event_time and when the event became queryable'
+      ingest_delay_ms UInt32 COMMENT 'Delay between event_time and when the event became queryable' CODEC(T64, ZSTD(1))
     ) ENGINE = MergeTree
     PARTITION BY toYYYYMM(event_time)
     ORDER BY (event_name, toDate(event_time), workspace_id, event_time)

@@ -1,17 +1,17 @@
 // The knowledge base: documents, chunk index, knowledge graph, personas/permissions,
-// knowledge gaps and per-user memory. All state is plain JSON on disk under data/.
+// knowledge gaps and per-user memory. Repo sources are read from data/; uploads, gaps and
+// memory live in the state store (ClickHouse or local files, see state.ts).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chunkDocument, loadDocuments, type Chunk, type Doc } from "./ingest.ts";
+import { chunkDocument, loadDocuments, parseSource, type Chunk, type Doc } from "./ingest.ts";
 import { BM25Index, tokenize, type SearchHit } from "./search.ts";
+import * as state from "./state.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.BRAIN_DATA_DIR ?? path.join(here, "..", "data");
 export const SOURCES_DIR = path.join(DATA_DIR, "sources");
 const GRAPH_FILE = path.join(DATA_DIR, "graph.json");
-const GAPS_FILE = path.join(DATA_DIR, "gaps.json");
-const MEMORY_FILE = path.join(DATA_DIR, "memory.json");
 
 // ---------- Personas & permissions ----------
 
@@ -44,14 +44,33 @@ let docs: Doc[] = [];
 let chunks: Chunk[] = [];
 let index = new BM25Index([]);
 let loadedAt = "";
+let loadedVersion = -1;
 
-export function reload(): { docs: number; chunks: number } {
+interface UploadedSource { sourceType: string; file: string; content: string }
+
+/** Rebuild the index from repo sources plus uploaded sources (uploads come last so repo chunk ids stay stable). */
+export async function reload(): Promise<{ docs: number; chunks: number }> {
+  const uploads = await state.list<UploadedSource>("source");
+  loadedVersion = (await state.get<number>("meta", "sources_version")) ?? 0;
   docs = loadDocuments(SOURCES_DIR);
+  for (const { value: u } of uploads.sort((a, b) => a.key.localeCompare(b.key))) {
+    try {
+      docs.push(...parseSource(u.sourceType, u.file, u.content));
+    } catch (err) {
+      console.warn(`[kb] skipped upload ${u.sourceType}/${u.file}: ${(err as Error).message}`);
+    }
+  }
   chunks = docs.flatMap(chunkDocument).map((c, i) => ({ ...c, id: `c${i + 1}` }));
   index = new BM25Index(chunks);
   graph = loadGraph();
   loadedAt = new Date().toISOString();
   return { docs: docs.length, chunks: chunks.length };
+}
+
+/** Reload if another instance added sources since we last indexed (cheap version check). */
+export async function ensureFresh(): Promise<void> {
+  const v = (await state.get<number>("meta", "sources_version")) ?? 0;
+  if (v !== loadedVersion) await reload();
 }
 
 export function search(query: string, persona: Persona, opts: { sourceTypes?: string[]; limit?: number } = {}): SearchHit[] {
@@ -89,7 +108,7 @@ export function listDocs(persona: Persona) {
   }));
 }
 
-export function stats() {
+export async function stats() {
   const bySource: Record<string, number> = {};
   for (const d of docs) bySource[d.sourceType] = (bySource[d.sourceType] ?? 0) + 1;
   return {
@@ -97,7 +116,7 @@ export function stats() {
     chunks: chunks.length,
     entities: graph.entities.length,
     relations: graph.relations.length,
-    gaps: readJson<Gap[]>(GAPS_FILE, []).filter((g) => !g.resolved).length,
+    gaps: (await listGaps()).filter((g) => !g.resolved).length,
     bySource,
     loadedAt,
   };
@@ -109,24 +128,24 @@ export function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "untitled";
 }
 
-export function addSource(input: { title: string; sourceType: string; content: string; owner?: string; access?: string; format?: "md" | "json" }): string {
+export async function addSource(input: { title: string; sourceType: string; content: string; owner?: string; access?: string; format?: "md" | "json" }): Promise<string> {
   const type = slugify(input.sourceType);
-  const dir = path.join(SOURCES_DIR, type);
-  fs.mkdirSync(dir, { recursive: true });
-  let name = slugify(input.title);
   const ext = input.format === "json" ? "json" : "md";
-  for (let n = 2; fs.existsSync(path.join(dir, `${name}.${ext}`)); n++) name = `${slugify(input.title)}-${n}`;
-  let body = input.content;
+  const existing = new Set((await state.list<UploadedSource>("source")).map((s) => s.key));
+  let name = slugify(input.title);
+  for (let n = 2; existing.has(`${type}/${name}.${ext}`) || fs.existsSync(path.join(SOURCES_DIR, type, `${name}.${ext}`)); n++) name = `${slugify(input.title)}-${n}`;
+  let content = input.content;
   if (ext === "md") {
     const today = new Date().toISOString().slice(0, 10);
     const fm = [`title: ${input.title.replace(/\n/g, " ")}`, `owner: ${input.owner || "Uploaded"}`, `updated: ${today}`];
     if (input.access && input.access !== "all") fm.push(`access: ${input.access}`);
-    body = `---\n${fm.join("\n")}\n---\n\n${input.content.trim()}\n`;
+    content = `---\n${fm.join("\n")}\n---\n\n${input.content.trim()}\n`;
   } else {
-    JSON.parse(body); // validate
+    JSON.parse(content); // validate
   }
-  fs.writeFileSync(path.join(dir, `${name}.${ext}`), body);
-  reload();
+  await state.put("source", `${type}/${name}.${ext}`, { sourceType: type, file: `${name}.${ext}`, content } satisfies UploadedSource);
+  await state.put("meta", "sources_version", Date.now());
+  await reload();
   return `${type}/${name}`;
 }
 
@@ -192,34 +211,29 @@ export function entitiesIn(text: string): Entity[] {
 
 export interface Gap { id: string; question: string; reason: string; persona: string; count: number; firstAsked: string; lastAsked: string; resolved?: boolean }
 
-export function flagGap(question: string, reason: string, persona: string): Gap {
-  const gaps = readJson<Gap[]>(GAPS_FILE, []);
-  const key = question.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const gapKey = (q: string) => q.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().slice(0, 180);
+
+export async function flagGap(question: string, reason: string, persona: string): Promise<Gap> {
+  const key = gapKey(question);
   const now = new Date().toISOString();
-  let gap = gaps.find((g) => g.question.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === key);
-  if (gap) {
-    gap.count++;
-    gap.lastAsked = now;
-    gap.reason = reason;
-    gap.resolved = false;
-  } else {
-    gap = { id: `g${Date.now().toString(36)}`, question, reason, persona, count: 1, firstAsked: now, lastAsked: now };
-    gaps.push(gap);
-  }
-  writeJson(GAPS_FILE, gaps);
+  const existing = await state.get<Gap>("gap", key);
+  const gap: Gap = existing
+    ? { ...existing, count: existing.count + 1, lastAsked: now, reason, resolved: false }
+    : { id: key, question, reason, persona, count: 1, firstAsked: now, lastAsked: now };
+  await state.put("gap", key, gap);
   return gap;
 }
 
-export function listGaps(): Gap[] {
-  return readJson<Gap[]>(GAPS_FILE, []).sort((a, b) => Number(!!a.resolved) - Number(!!b.resolved) || b.lastAsked.localeCompare(a.lastAsked));
+export async function listGaps(): Promise<Gap[]> {
+  return (await state.list<Gap>("gap"))
+    .map((g) => g.value)
+    .sort((a, b) => Number(!!a.resolved) - Number(!!b.resolved) || b.lastAsked.localeCompare(a.lastAsked));
 }
 
-export function resolveGap(id: string): boolean {
-  const gaps = readJson<Gap[]>(GAPS_FILE, []);
-  const g = gaps.find((x) => x.id === id);
+export async function resolveGap(id: string): Promise<boolean> {
+  const g = await state.get<Gap>("gap", id);
   if (!g) return false;
-  g.resolved = true;
-  writeJson(GAPS_FILE, gaps);
+  await state.put("gap", id, { ...g, resolved: true });
   return true;
 }
 
@@ -227,24 +241,20 @@ export function resolveGap(id: string): boolean {
 
 export interface Memory { id: string; fact: string; at: string }
 
-export function getMemories(userId: string): Memory[] {
-  return readJson<Record<string, Memory[]>>(MEMORY_FILE, {})[userId] ?? [];
+export async function getMemories(userId: string): Promise<Memory[]> {
+  return (await state.get<Memory[]>("memory", userId)) ?? [];
 }
 
-export function remember(userId: string, fact: string): Memory {
-  const all = readJson<Record<string, Memory[]>>(MEMORY_FILE, {});
-  const list = (all[userId] ??= []);
+export async function remember(userId: string, fact: string): Promise<Memory> {
+  const list = await getMemories(userId);
   const m = { id: `m${Date.now().toString(36)}`, fact: fact.trim().slice(0, 300), at: new Date().toISOString() };
   list.push(m);
-  if (list.length > 30) list.shift();
-  writeJson(MEMORY_FILE, all);
+  await state.put("memory", userId, list.slice(-30));
   return m;
 }
 
-export function forget(userId: string, id: string): void {
-  const all = readJson<Record<string, Memory[]>>(MEMORY_FILE, {});
-  all[userId] = (all[userId] ?? []).filter((m) => m.id !== id);
-  writeJson(MEMORY_FILE, all);
+export async function forget(userId: string, id: string): Promise<void> {
+  await state.put("memory", userId, (await getMemories(userId)).filter((m) => m.id !== id));
 }
 
 // ---------- helpers ----------
@@ -257,6 +267,3 @@ function readJson<T>(file: string, fallback: T): T {
   }
 }
 
-function writeJson(file: string, value: unknown): void {
-  fs.writeFileSync(file, JSON.stringify(value, null, 2));
-}

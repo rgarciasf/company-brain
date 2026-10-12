@@ -70,6 +70,17 @@ Data tables: `pulse.events` (~38M rows), `pulse.workspaces`, `pulse.invoices`, `
 7. **Knowledge features:** per-diem conflict, Query Engine impact graph, salary bands as Engineer vs Manager, and a knowledge gap.
 8. **MCP:** `claude mcp add company-brain -- node $(pwd)/src/mcp.ts`, then ask Claude Code to "use company-brain to find which plan has the most MRR".
 
+## Deploy to Vercel
+
+The same handler runs as one Vercel Function (`api/index.ts`, all routes rewritten to it; see `vercel.json`). Vercel can't run the bundled ClickHouse binary, and its instances are short-lived, so production uses **ClickHouse Cloud**. All app state (reports, schedules, gaps, memory, uploads, pending approvals) lives in ClickHouse (`brain.state`), so any instance can serve any request, including an Approve click handled by a different instance than the one running the agent.
+
+1. Create a ClickHouse Cloud service and put `CLICKHOUSE_URL` (`https://<host>:8443`), `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` in `.env`.
+2. Seed it (data is generated server-side, ~30s): `npm run db:seed`
+3. Set Vercel env vars: `ANTHROPIC_API_KEY`, the three `CLICKHOUSE_*`, `APP_PASSWORD` (shared login) and `CRON_SECRET` (any random string; Vercel Cron sends it).
+4. `vercel deploy --prod`
+
+Notes: functions run up to 300s (enough for long data questions + approvals). On the Hobby plan Vercel Cron runs at most daily, so `/api/cron` runs due scheduled questions every day at 08:00 UTC. With `APP_PASSWORD` set, every page and API call requires the login cookie.
+
 ## Connect via MCP
 
 ```bash
@@ -98,12 +109,18 @@ npm run typecheck
 | `ANALYST_MODEL` / `ANALYST_EFFORT` | `claude-sonnet-5-5` / `medium` | SQL sub-agent |
 | `APPROVAL_ROWS` | `30000000` | Estimated rows above which a query needs approval |
 | `CLICKHOUSE_URL` / `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` / `CLICKHOUSE_DB` | local / `default` / — / `pulse` | Point at ClickHouse Cloud or any server instead of the bundled binary |
+| `APP_PASSWORD` | — | Shared password login (required for public deployments) |
+| `CRON_SECRET` | — | Authenticates Vercel Cron calls to `/api/cron` |
 | `COMPANY_NAME`, `PORT`, `MCP_PERSONA`, `BRAIN_OFFLINE` | `Acme`, `3000`, `engineer`, — | |
 
 ## Project layout
 
 ```
-src/server.ts      HTTP API, SSE streaming, approvals, startup (ClickHouse + seed + scheduler)
+src/app.ts         request handler: HTTP API, SSE streaming, approvals, auth gate (shared by local + Vercel)
+src/server.ts      local entry: starts ClickHouse, seeds on first run, scheduler
+api/index.ts       Vercel Function entry (same handler)
+src/state.ts       persistent app state (ClickHouse brain.state, or local files)
+src/auth.ts        shared-password login + cron auth
 src/brain.ts       main agent (knowledge tools + analyze_data)
 src/analyst.ts     data-analyst sub-agent (schema, values, SQL, charts) + skills loader
 src/agent.ts       shared streaming tool-use loop with tracing
@@ -114,7 +131,7 @@ src/kb.ts          knowledge base: index, graph, personas/permissions, gaps, mem
 src/ingest.ts      connectors + heading-aware chunking      src/search.ts  BM25
 src/mcp.ts         MCP server (stdio)
 scripts/seed.ts    deterministic synthetic analytics data   scripts/eval.ts  answer eval
-public/            web UI (vanilla JS + Chart.js), report page
+web/               web UI (vanilla JS + Chart.js), report page, login page
 data/              sources, graph.json, skills (runtime state is git-ignored)
 ```
 

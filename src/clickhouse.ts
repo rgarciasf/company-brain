@@ -5,10 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(here, "..");
-const CH_DIR = path.join(ROOT, ".clickhouse");
-const CH_BIN = path.join(CH_DIR, "clickhouse");
+// The project root is assembled at runtime (not via a static path.join) so deployment file tracers
+// (e.g. Vercel's) don't treat the whole project, including the 700 MB local binary, as an asset.
+const ROOT = [path.dirname(fileURLToPath(import.meta.url)), ".."].join(path.sep);
+const CH_DIR = path.resolve(ROOT, process.env.CLICKHOUSE_HOME ?? ".clickhouse");
+const CH_BIN = path.resolve(CH_DIR, "clickhouse");
 
 export const CH_URL = process.env.CLICKHOUSE_URL ?? "http://127.0.0.1:8123";
 const CH_USER = process.env.CLICKHOUSE_USER ?? "default";
@@ -35,9 +36,13 @@ function authHeaders(): Record<string, string> {
 }
 
 /** Run a statement. `settings` are passed as URL params (ClickHouse settings). */
-export async function exec(sql: string, settings: Record<string, string | number> = {}, signal?: AbortSignal): Promise<string> {
+export async function exec(sql: string, settings: Record<string, string | number> = {}, signal?: AbortSignal, params: Record<string, string | number> = {}): Promise<string> {
   const url = new URL(CH_URL);
+  // Always UTC, so local and ClickHouse Cloud servers interpret dates identically.
+  url.searchParams.set("session_timezone", "UTC");
   for (const [k, v] of Object.entries(settings)) url.searchParams.set(k, String(v));
+  // Server-side query parameters: reference as {name:Type} in SQL (no string interpolation).
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(`param_${k}`, String(v));
   const res = await fetch(url, { method: "POST", body: sql, headers: authHeaders(), signal });
   const text = await res.text();
   if (!res.ok) throw new ClickHouseError(text.trim().split("\n")[0].slice(0, 600));
@@ -45,7 +50,10 @@ export async function exec(sql: string, settings: Record<string, string | number
 }
 
 /** Run a SELECT and return typed JSON rows. */
-export async function query(sql: string, opts: { maxRows?: number; readonly?: boolean; timeoutSec?: number; signal?: AbortSignal } = {}): Promise<QueryResult> {
+export async function query(
+  sql: string,
+  opts: { maxRows?: number; readonly?: boolean; timeoutSec?: number; signal?: AbortSignal; params?: Record<string, string | number> } = {},
+): Promise<QueryResult> {
   const maxRows = opts.maxRows ?? 10_000;
   const settings: Record<string, string | number> = {
     default_format: "JSON",
@@ -57,7 +65,7 @@ export async function query(sql: string, opts: { maxRows?: number; readonly?: bo
   };
   if (opts.readonly !== false) settings.readonly = 2;
   const started = Date.now();
-  const json = JSON.parse(await exec(sql, settings, opts.signal)) as {
+  const json = JSON.parse(await exec(sql, settings, opts.signal, opts.params)) as {
     meta: { name: string; type: string }[];
     data: Record<string, unknown>[];
     rows: number;
@@ -82,7 +90,7 @@ export async function insertJson(table: string, rows: object[]): Promise<void> {
 
 export async function ping(): Promise<boolean> {
   try {
-    const res = await fetch(new URL("/ping", CH_URL), { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(new URL("/ping", CH_URL), { signal: AbortSignal.timeout(4000) });
     return res.ok;
   } catch {
     return false;

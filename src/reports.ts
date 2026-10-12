@@ -1,13 +1,10 @@
 // Shareable reports (an answer + charts + the full audit trail of queries and sources) and
-// scheduled questions that run on a cadence and publish a report each time.
-import fs from "node:fs";
-import path from "node:path";
+// scheduled questions that run on a cadence and publish a report each time. Persisted in the
+// state store (ClickHouse or local files).
 import { randomBytes } from "node:crypto";
 import * as kb from "./kb.ts";
+import * as state from "./state.ts";
 import { ask, chunkMeta, type AskResult } from "./brain.ts";
-
-const REPORTS_DIR = path.join(kb.DATA_DIR, "reports");
-const SCHEDULES_FILE = path.join(kb.DATA_DIR, "schedules.json");
 
 export interface Report {
   id: string;
@@ -52,30 +49,19 @@ export function buildReport(result: AskResult, meta: { question: string; persona
   };
 }
 
-export function saveReport(r: Report): Report {
-  fs.mkdirSync(REPORTS_DIR, { recursive: true });
-  fs.writeFileSync(path.join(REPORTS_DIR, `${r.id}.json`), JSON.stringify(r, null, 2));
+export async function saveReport(r: Report): Promise<Report> {
+  await state.put("report", r.id, r);
   return r;
 }
 
-export function getReport(id: string): Report | null {
+export async function getReport(id: string): Promise<Report | null> {
   if (!/^[A-Za-z0-9_-]{6,20}$/.test(id)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, `${id}.json`), "utf8")) as Report;
-  } catch {
-    return null;
-  }
+  return state.get<Report>("report", id);
 }
 
-export function listReports() {
-  if (!fs.existsSync(REPORTS_DIR)) return [];
-  return fs
-    .readdirSync(REPORTS_DIR)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => {
-      const r = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), "utf8")) as Report;
-      return { id: r.id, title: r.title, createdAt: r.createdAt, source: r.source, scheduleId: r.scheduleId, persona: r.persona, queries: r.queries.length, charts: r.charts.length };
-    })
+export async function listReports() {
+  return (await state.list<Report>("report"))
+    .map(({ value: r }) => ({ id: r.id, title: r.title, createdAt: r.createdAt, source: r.source, scheduleId: r.scheduleId, persona: r.persona, queries: r.queries.length, charts: r.charts.length }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -97,16 +83,8 @@ export interface Schedule {
   lastStatus?: string;
 }
 
-function readSchedules(): Schedule[] {
-  try {
-    return JSON.parse(fs.readFileSync(SCHEDULES_FILE, "utf8")) as Schedule[];
-  } catch {
-    return [];
-  }
-}
-
-function writeSchedules(list: Schedule[]) {
-  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(list, null, 2));
+async function readSchedules(): Promise<Schedule[]> {
+  return (await state.list<Schedule>("schedule")).map((s) => s.value);
 }
 
 export function computeNextRun(s: Pick<Schedule, "frequency" | "time" | "weekday" | "minutes">, from = new Date()): string {
@@ -127,13 +105,12 @@ export function computeNextRun(s: Pick<Schedule, "frequency" | "time" | "weekday
   return next.toISOString();
 }
 
-export function listSchedules(): Schedule[] {
-  return readSchedules();
+export async function listSchedules(): Promise<Schedule[]> {
+  return (await readSchedules()).sort((a, b) => a.nextRun.localeCompare(b.nextRun));
 }
 
-export function upsertSchedule(input: Partial<Schedule> & { question: string }): Schedule {
-  const list = readSchedules();
-  const existing = input.id ? list.find((s) => s.id === input.id) : undefined;
+export async function upsertSchedule(input: Partial<Schedule> & { question: string }): Promise<Schedule> {
+  const existing = input.id ? ((await state.get<Schedule>("schedule", input.id)) ?? undefined) : undefined;
   const frequency = (["hourly", "daily", "weekly", "minutes"].includes(String(input.frequency)) ? input.frequency : "daily") as Schedule["frequency"];
   const s: Schedule = {
     ...(existing ?? { id: newId(), enabled: true, nextRun: "" }),
@@ -147,20 +124,18 @@ export function upsertSchedule(input: Partial<Schedule> & { question: string }):
     enabled: input.enabled ?? existing?.enabled ?? true,
   };
   s.nextRun = computeNextRun(s);
-  if (existing) Object.assign(existing, s);
-  else list.push(s);
-  writeSchedules(list);
+  await state.put("schedule", s.id, s);
   return s;
 }
 
-export function deleteSchedule(id: string) {
-  writeSchedules(readSchedules().filter((s) => s.id !== id));
+export async function deleteSchedule(id: string) {
+  await state.del("schedule", id);
 }
 
 const running = new Set<string>();
 
 export async function runSchedule(id: string): Promise<Report | null> {
-  const s = readSchedules().find((x) => x.id === id);
+  const s = await state.get<Schedule>("schedule", id);
   if (!s || running.has(id)) return null;
   running.add(id);
   try {
@@ -168,15 +143,14 @@ export async function runSchedule(id: string): Promise<Report | null> {
       { question: s.question, history: [], persona: kb.getPersona(s.persona), userId: "scheduler", source: "schedule", requestApproval: async () => false },
       () => {},
     );
-    const report = saveReport(buildReport(result, { question: s.question, persona: s.persona, title: `${s.title} · ${new Date().toLocaleDateString()}`, source: "schedule", scheduleId: s.id }));
-    const list = readSchedules();
-    const cur = list.find((x) => x.id === id);
+    const report = await saveReport(buildReport(result, { question: s.question, persona: s.persona, title: `${s.title} · ${new Date().toLocaleDateString()}`, source: "schedule", scheduleId: s.id }));
+    const cur = await state.get<Schedule>("schedule", id);
     if (cur) {
       cur.lastRun = new Date().toISOString();
       cur.lastReportId = report.id;
       cur.lastStatus = result.mode;
       cur.nextRun = computeNextRun(cur);
-      writeSchedules(list);
+      await state.put("schedule", id, cur);
     }
     return report;
   } finally {
@@ -184,14 +158,23 @@ export async function runSchedule(id: string): Promise<Report | null> {
   }
 }
 
-export function startScheduler(log = console.log) {
-  const tick = async () => {
-    const now = Date.now();
-    for (const s of readSchedules()) {
-      if (!s.enabled || running.has(s.id) || new Date(s.nextRun).getTime() > now) continue;
-      log(`[scheduler] running "${s.title}"`);
-      runSchedule(s.id).catch((err) => log(`[scheduler] "${s.title}" failed: ${(err as Error).message}`));
+/** Run every enabled schedule that is due. Called by the local timer or the Vercel cron endpoint. */
+export async function runDueSchedules(log = console.log): Promise<string[]> {
+  const now = Date.now();
+  const due = (await readSchedules()).filter((s) => s.enabled && !running.has(s.id) && new Date(s.nextRun).getTime() <= now);
+  const reports: string[] = [];
+  for (const s of due) {
+    log(`[scheduler] running "${s.title}"`);
+    try {
+      const r = await runSchedule(s.id);
+      if (r) reports.push(r.id);
+    } catch (err) {
+      log(`[scheduler] "${s.title}" failed: ${(err as Error).message}`);
     }
-  };
-  return setInterval(tick, 30_000);
+  }
+  return reports;
+}
+
+export function startScheduler(log = console.log) {
+  return setInterval(() => void runDueSchedules(log).catch((err) => log(`[scheduler] ${(err as Error).message}`)), 30_000);
 }

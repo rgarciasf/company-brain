@@ -243,3 +243,9 @@ body.report-page main { display: block; }
 .steps { font-size: 14px; padding-left: 20px; }
 @media (max-width: 820px) { .io { grid-template-columns: 1fr; } .span-row { grid-template-columns: 1fr 70px; } .span-bar-wrap { display: none; } }
 .query-block .table-wrap, .chart-table .table-wrap { max-height: 340px; overflow: auto; }
+
+/* Login */
+body.login-page { display: grid; place-items: center; min-height: 100%; padding: 16px; }
+.login-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: min(360px, 100%); display: flex; flex-direction: column; gap: 10px; text-align: center; box-shadow: var(--shadow); }
+.login-card .logo { font-size: 40px; }
+.login-card h1 { margin: 0; font-size: 22px; }
