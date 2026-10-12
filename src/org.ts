@@ -16,7 +16,13 @@ export interface OrgPerson {
 
 let cache: { at: number; people: OrgPerson[]; byId: Map<string, OrgPerson> } | null = null;
 
+/** On Vercel, org data (real structure, pseudonymised) stays hidden until HR_PASSWORD is configured. */
+function orgEnabled(): boolean {
+  return !process.env.VERCEL || !!process.env.HR_PASSWORD;
+}
+
 async function load(): Promise<typeof cache> {
+  if (!orgEnabled()) return null;
   if (cache && Date.now() - cache.at < 5 * 60_000) return cache;
   try {
     const r = await ch.query(
