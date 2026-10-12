@@ -72,6 +72,25 @@ Data tables: `pulse.events` (~38M rows), `pulse.workspaces`, `pulse.invoices`, `
 7. **Knowledge features:** per-diem conflict, Query Engine impact graph, salary bands as Engineer vs Manager, and a knowledge gap.
 8. **MCP:** `claude mcp add company-brain -- node $(pwd)/src/mcp.ts`, then ask Claude Code to "use company-brain to find which plan has the most MRR".
 
+## Knowledge backend: local or HydraDB
+
+Knowledge retrieval is switchable with `KNOWLEDGE_BACKEND`:
+
+| | `local` (default) | `hydradb` |
+|---|---|---|
+| Engine | In-process BM25 keyword search | [HydraDB](https://docs.hydradb.com) hybrid search (semantic + keyword) with graph context |
+| Setup | none | `HYDRA_DB_API_KEY` in `.env`, then `npm run hydra:sync` |
+| Graph | declared graph (`data/graph.json`) via `explore_graph` | same, plus HydraDB's auto-extracted relation paths appended to search results |
+
+How it works (`src/hydra.ts`): each of our chunks is ingested as one HydraDB source with a stable id (`<doc>--<position>`) and filterable metadata (`source_type`, `access`, `doc_id`, `doc_status`, `updated_on`). Queries filter by the persona's access groups and requested source types; every hit is mapped back to the local chunk, so citations, `read_document`, the superseded-policy logic and the UI work unchanged. Access is re-checked locally on every hit (HydraDB metadata filters are not an ACL). If HydraDB errors or returns nothing, search falls back to local BM25 and the search chip shows ⚠️ with the reason. Uploads made in the UI are ingested into HydraDB as well.
+
+```bash
+npm run hydra:sync                      # create database + schema, upsert all chunks, wait for indexing, test query
+KNOWLEDGE_BACKEND=hydradb npm run eval  # A/B the answer eval against local search
+```
+
+On Vercel, add `KNOWLEDGE_BACKEND=hydradb` and `HYDRA_DB_API_KEY` to the environment.
+
 ## Deploy to Vercel
 
 **Production:** https://company-brain-mu-steel.vercel.app. Every push to `main` deploys automatically (GitHub ↔ Vercel); other branches and pull requests get preview URLs, which are behind Vercel login plus the app password and share the production ClickHouse database.
@@ -113,6 +132,8 @@ npm run typecheck
 | `ANALYST_MODEL` / `ANALYST_EFFORT` | `claude-sonnet-5-5` / `medium` | SQL sub-agent |
 | `APPROVAL_ROWS` | `30000000` | Estimated rows above which a query needs approval |
 | `CLICKHOUSE_URL` / `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` / `CLICKHOUSE_DB` | local / `default` / — / `pulse` | Point at ClickHouse Cloud or any server instead of the bundled binary |
+| `KNOWLEDGE_BACKEND` | `local` | `local` or `hydradb` |
+| `HYDRA_DB_API_KEY` / `HYDRA_DB_DATABASE` / `HYDRA_DB_COLLECTION` / `HYDRA_DB_MODE` | — / `company_brain` / `knowledge` / `fast` | HydraDB backend settings |
 | `APP_PASSWORD` | — | Shared password login (required for public deployments) |
 | `CRON_SECRET` | — | Authenticates Vercel Cron calls to `/api/cron` |
 | `COMPANY_NAME`, `PORT`, `MCP_PERSONA`, `BRAIN_OFFLINE` | `Acme`, `3000`, `engineer`, — | |
@@ -133,6 +154,7 @@ src/trace.ts       traces/spans/feedback (ClickHouse or JSONL fallback), cost mo
 src/reports.ts     shareable reports with audit trail + scheduled questions
 src/kb.ts          knowledge base: index, graph, personas/permissions, gaps, memory
 src/ingest.ts      connectors + heading-aware chunking      src/search.ts  BM25
+src/hydra.ts       HydraDB retrieval backend (KNOWLEDGE_BACKEND=hydradb)      scripts/hydra-sync.ts  sync knowledge to HydraDB
 src/mcp.ts         MCP server (stdio)
 scripts/seed.ts    deterministic synthetic analytics data   scripts/eval.ts  answer eval
 web/               web UI (vanilla JS + Chart.js), report page, login page

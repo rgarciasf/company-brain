@@ -14,10 +14,12 @@
     "test": "node --test test/*.test.ts",
     "eval": "node scripts/eval.ts",
     "db:install": "sh scripts/install-clickhouse.sh",
-    "db:seed": "node scripts/seed.ts"
+    "db:seed": "node scripts/seed.ts",
+    "hydra:sync": "node scripts/hydra-sync.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@hydradb/sdk": "^2.1.7",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^4.6.7"
   },

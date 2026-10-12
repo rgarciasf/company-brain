@@ -140,6 +140,7 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
         personas: kb.PERSONAS,
         stats: await kb.stats(),
         clickhouse: await ch.ping(),
+        knowledgeBackend: kb.knowledgeBackend(),
         traceStore: traces.traceBackend(),
         stateStore: state.stateBackend(),
         auth: auth.authEnabled(),
@@ -152,8 +153,8 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       return send(res, 200, { ...doc, chunks: kb.chunksOf(doc.id).map(chunkMeta) });
     }
     if (p === "/api/search" && req.method === "GET") {
-      const hits = kb.search(url.searchParams.get("q") ?? "", persona, { limit: 10 });
-      return send(res, 200, hits.map((h) => ({ ...chunkMeta(h.chunk), score: Number(h.score.toFixed(2)) })));
+      const { hits, backend, fallback } = await kb.search(url.searchParams.get("q") ?? "", persona, { limit: 10 });
+      return send(res, 200, hits.map((h) => ({ ...chunkMeta(h.chunk), score: Number(h.score.toFixed(2)), backend, fallback })));
     }
     if (p === "/api/graph" && req.method === "GET") {
       const entity = url.searchParams.get("entity");

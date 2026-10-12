@@ -37,7 +37,7 @@ server.registerTool(
     annotations: { readOnlyHint: true },
   },
   async ({ query, source_types, limit }) => {
-    const hits = kb.search(query, persona, { sourceTypes: source_types, limit: limit ?? 6 });
+    const { hits } = await kb.search(query, persona, { sourceTypes: source_types, limit: limit ?? 6 });
     if (!hits.length) return text(`No results for "${query}".`);
     return text(hits.map(({ chunk: c }) => `[${c.id}] ${c.title}${c.heading ? ` > ${c.heading}` : ""} (${c.sourceType}, updated ${c.updated ?? "?"}${c.status ? `, ${c.status}` : ""}, doc_id ${c.docId})\n${c.text}`).join("\n\n---\n\n"));
   },

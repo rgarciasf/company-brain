@@ -18,8 +18,9 @@ export interface Doc {
 }
 
 export interface Chunk {
-  id: string; // stable citation id, e.g. "c12"
+  id: string; // citation id, e.g. "c12"
   docId: string;
+  ord: number; // position within its document (stable across re-indexing)
   title: string;
   heading: string;
   sourceType: string;
@@ -154,6 +155,7 @@ export function chunkDocument(doc: Doc): Omit<Chunk, "id">[] {
       if (!buf.trim()) return;
       out.push({
         docId: doc.id,
+        ord: out.length,
         title: doc.title,
         heading: s.heading,
         sourceType: doc.sourceType,

@@ -138,10 +138,11 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
         if (!query) return { content: "Error: 'query' must be a non-empty string.", isError: true };
         const sourceTypes = Array.isArray(input.source_types) ? input.source_types.filter((s): s is string => typeof s === "string") : undefined;
         const limit = typeof input.limit === "number" ? Math.min(Math.max(Math.round(input.limit), 1), 10) : 6;
-        const hits = kb.search(query, ctx.persona, { sourceTypes, limit });
-        emit("step", { kind: "search", query, sourceTypes, results: hits.map((h) => chunkMeta(h.chunk)) });
+        const { hits, backend, graph, fallback } = await kb.search(query, ctx.persona, { sourceTypes, limit });
+        emit("step", { kind: "search", query, sourceTypes, backend, fallback, results: hits.map((h) => chunkMeta(h.chunk)) });
         if (!hits.length) return { content: `No results for "${query}". Try different keywords or remove the source filter.` };
-        return { content: hits.map((h) => formatChunk(h.chunk)).join("\n\n---\n\n") };
+        const related = graph.length ? `\n\n---\n\nRelated facts from the knowledge graph (HydraDB, auto-extracted; confirm against the passages):\n${graph.map((g) => `- ${g}`).join("\n")}` : "";
+        return { content: hits.map((h) => formatChunk(h.chunk)).join("\n\n---\n\n") + related };
       }
       case "read_document": {
         const id = str(input.doc_id);
@@ -225,9 +226,9 @@ export async function ask(ctx: AskInput, emitRaw: Emit): Promise<AskResult> {
 /** Search-only answer: shows the best passages and graph facts, citing them. */
 async function offlineAnswer(ctx: AskInput, emit: Emit, trace: Trace, why: string): Promise<string> {
   const span = trace.start("search_knowledge", "tool", "", { query: ctx.question });
-  const hits = kb.search(ctx.question, ctx.persona, { limit: 5 });
-  trace.end(span, { output: hits.map((h) => h.chunk.id).join(", ") });
-  emit("step", { kind: "search", query: ctx.question, results: hits.map((h) => chunkMeta(h.chunk)) });
+  const { hits, backend, fallback } = await kb.search(ctx.question, ctx.persona, { limit: 5 });
+  trace.end(span, { output: `[${backend}] ` + hits.map((h) => h.chunk.id).join(", ") });
+  emit("step", { kind: "search", query: ctx.question, backend, fallback, results: hits.map((h) => chunkMeta(h.chunk)) });
 
   const terms = new Set(ctx.question.toLowerCase().match(/[a-z0-9$]{3,}/g) ?? []);
   const best = (text: string) =>

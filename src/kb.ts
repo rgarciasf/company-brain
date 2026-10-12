@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { chunkDocument, loadDocuments, parseSource, type Chunk, type Doc } from "./ingest.ts";
 import { BM25Index, tokenize, type SearchHit } from "./search.ts";
 import * as state from "./state.ts";
+import * as hydra from "./hydra.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.BRAIN_DATA_DIR ?? path.join(here, "..", "data");
@@ -45,6 +46,7 @@ let chunks: Chunk[] = [];
 let index = new BM25Index([]);
 let loadedAt = "";
 let loadedVersion = -1;
+let bySourceId = new Map<string, Chunk>();
 
 interface UploadedSource { sourceType: string; file: string; content: string }
 
@@ -61,6 +63,7 @@ export async function reload(): Promise<{ docs: number; chunks: number }> {
     }
   }
   chunks = docs.flatMap(chunkDocument).map((c, i) => ({ ...c, id: `c${i + 1}` }));
+  bySourceId = new Map(chunks.map((c) => [hydra.sourceId(c), c]));
   index = new BM25Index(chunks);
   graph = loadGraph();
   loadedAt = new Date().toISOString();
@@ -73,12 +76,54 @@ export async function ensureFresh(): Promise<void> {
   if (v !== loadedVersion) await reload();
 }
 
-export function search(query: string, persona: Persona, opts: { sourceTypes?: string[]; limit?: number } = {}): SearchHit[] {
+// ---------- Retrieval backends ----------
+
+/** Which retrieval engine answers search_knowledge: local BM25 or HydraDB (KNOWLEDGE_BACKEND). */
+export function knowledgeBackend(): "local" | "hydradb" {
+  return process.env.KNOWLEDGE_BACKEND === "hydradb" && hydra.hydraConfigured() ? "hydradb" : "local";
+}
+
+export interface SearchResult {
+  hits: SearchHit[];
+  backend: "local" | "hydradb";
+  /** Relation paths from HydraDB's graph context (empty for local search). */
+  graph: string[];
+  /** Set when HydraDB was requested but local search answered instead. */
+  fallback?: string;
+}
+
+function localSearch(query: string, persona: Persona, opts: { sourceTypes?: string[]; limit?: number }): SearchHit[] {
   const types = opts.sourceTypes?.length ? new Set(opts.sourceTypes) : null;
   return index.search(query, {
     limit: opts.limit,
     filter: (c) => canAccess(c, persona) && (!types || types.has(c.sourceType)),
   });
+}
+
+export async function search(query: string, persona: Persona, opts: { sourceTypes?: string[]; limit?: number } = {}): Promise<SearchResult> {
+  const limit = opts.limit ?? 8;
+  if (knowledgeBackend() !== "hydradb") return { hits: localSearch(query, persona, { ...opts, limit }), backend: "local", graph: [] };
+  try {
+    const r = await hydra.search(query, { groups: persona.groups, sourceTypes: opts.sourceTypes, limit });
+    const types = opts.sourceTypes?.length ? new Set(opts.sourceTypes) : null;
+    const seen = new Set<string>();
+    const hits: SearchHit[] = [];
+    for (const h of r.hits) {
+      const chunk = bySourceId.get(h.sourceId);
+      // Map back to our chunk and re-check access locally (metadata filters are not an ACL).
+      if (!chunk || seen.has(chunk.id) || !canAccess(chunk, persona) || (types && !types.has(chunk.sourceType))) continue;
+      seen.add(chunk.id);
+      hits.push({ chunk, score: h.score });
+      if (hits.length >= limit) break;
+    }
+    if (!hits.length && r.hits.length === 0) {
+      return { hits: localSearch(query, persona, { ...opts, limit }), backend: "local", graph: r.graph, fallback: "HydraDB returned no results (is the knowledge synced? run npm run hydra:sync)" };
+    }
+    return { hits, backend: "hydradb", graph: r.graph };
+  } catch (err) {
+    console.warn(`[kb] HydraDB search failed, using local search: ${(err as Error).message}`);
+    return { hits: localSearch(query, persona, { ...opts, limit }), backend: "local", graph: [], fallback: `HydraDB error: ${(err as Error).message.slice(0, 200)}` };
+  }
 }
 
 export function getDoc(id: string, persona: Persona): Doc | undefined {
@@ -88,6 +133,11 @@ export function getDoc(id: string, persona: Persona): Doc | undefined {
 
 export function getChunk(id: string): Chunk | undefined {
   return chunks.find((c) => c.id === id);
+}
+
+/** Every chunk, regardless of access (for syncing to external retrieval backends). */
+export function allChunks(): Chunk[] {
+  return chunks;
 }
 
 export function chunksOf(docId: string): Chunk[] {
@@ -146,7 +196,12 @@ export async function addSource(input: { title: string; sourceType: string; cont
   await state.put("source", `${type}/${name}.${ext}`, { sourceType: type, file: `${name}.${ext}`, content } satisfies UploadedSource);
   await state.put("meta", "sources_version", Date.now());
   await reload();
-  return `${type}/${name}`;
+  const docId = `${type}/${name}`;
+  if (knowledgeBackend() === "hydradb") {
+    // Index the new document in HydraDB too (searchable after HydraDB finishes indexing).
+    await hydra.ingestChunks(chunks.filter((c) => c.docId === docId), () => {}).catch((err) => console.warn(`[kb] HydraDB ingest failed: ${(err as Error).message}`));
+  }
+  return docId;
 }
 
 // ---------- Knowledge graph ----------

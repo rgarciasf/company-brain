@@ -44,7 +44,10 @@ async function init() {
   const status = (state.status = await api("/api/status"));
   $("#company").textContent = status.company;
   $$(".company-name").forEach((e) => (e.textContent = status.company));
-  $("#mode").textContent = (status.ai ? `AI: ${status.model}` : "Search-only (no API key)") + (status.clickhouse ? " · ClickHouse ✓" : " · ClickHouse ✗");
+  $("#mode").textContent =
+    (status.ai ? `AI: ${status.model}` : "Search-only (no API key)") +
+    (status.clickhouse ? " · ClickHouse ✓" : " · ClickHouse ✗") +
+    (status.knowledgeBackend === "hydradb" ? " · Search: HydraDB" : "");
   const personaOptions = status.personas.map((p) => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
   $("#persona").innerHTML = personaOptions;
   $("#schedule-persona").innerHTML = personaOptions;
@@ -105,7 +108,7 @@ function addMessage(role, html) {
 
 function stepLabel(s) {
   switch (s.kind) {
-    case "search": return `🔎 “${s.query}”${s.sourceTypes?.length ? ` in ${s.sourceTypes.join(", ")}` : ""} · ${s.results.length}`;
+    case "search": return `${s.fallback ? "⚠️ " : ""}🔎 ${s.backend === "hydradb" ? "HydraDB " : ""}“${s.query}”${s.sourceTypes?.length ? ` in ${s.sourceTypes.join(", ")}` : ""} · ${s.results.length}`;
     case "read": return `📄 Read “${s.title}”`;
     case "graph": return `🕸️ Graph: ${s.entity} · ${s.edges.length} links`;
     case "gap": return `🕳️ Flagged knowledge gap`;
@@ -186,7 +189,8 @@ async function ask(question) {
         break;
       case "step":
         (data.results ?? []).forEach((c) => state.chunks.set(c.id, c));
-        chip(stepLabel(data), data.kind, data.kind === "graph" ? () => { show("graph"); exploreGraph(data.entity); } : null);
+        const c = chip(stepLabel(data), data.kind, data.kind === "graph" ? () => { show("graph"); exploreGraph(data.entity); } : null);
+        if (data.fallback) c.title = `Used local search instead: ${data.fallback}`;
         if (data.kind === "gap" || data.kind === "memory") { refreshStats(); loadMemory(); }
         if (data.kind === "analyst") answerEl.innerHTML = `<div class="thinking"><span class="dot"></span>Analysing data in ClickHouse…</div>`;
         break;

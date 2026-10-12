@@ -25,20 +25,20 @@ const RETRIEVAL_CASES: [string, string][] = [
 ];
 
 for (const [query, docId] of RETRIEVAL_CASES) {
-  test(`retrieval: "${query}" finds ${docId}`, () => {
-    const top = kb.search(query, engineer, { limit: 3 }).map((h) => h.chunk.docId);
+  test(`retrieval: "${query}" finds ${docId}`, async () => {
+    const top = (await kb.search(query, engineer, { limit: 3 })).hits.map((h) => h.chunk.docId);
     assert.ok(top.includes(docId), `top 3 were ${top.join(", ")}`);
   });
 }
 
-test("current policy outranks superseded policy", () => {
-  const top = kb.search("meal per diem", engineer, { limit: 2 });
+test("current policy outranks superseded policy", async () => {
+  const top = (await kb.search("meal per diem", engineer, { limit: 2 })).hits;
   assert.equal(top[0].chunk.docId, "policies/travel-expense-policy-2026");
 });
 
-test("permissions: restricted docs are filtered before retrieval", () => {
-  const asEngineer = kb.search("staff engineer salary band", engineer, { limit: 10 }).map((h) => h.chunk.docId);
-  const asManager = kb.search("staff engineer salary band", manager, { limit: 10 }).map((h) => h.chunk.docId);
+test("permissions: restricted docs are filtered before retrieval", async () => {
+  const asEngineer = (await kb.search("staff engineer salary band", engineer, { limit: 10 })).hits.map((h) => h.chunk.docId);
+  const asManager = (await kb.search("staff engineer salary band", manager, { limit: 10 })).hits.map((h) => h.chunk.docId);
   assert.ok(!asEngineer.includes("policies/compensation-bands"));
   assert.ok(asManager.includes("policies/compensation-bands"));
   assert.equal(kb.getDoc("policies/compensation-bands", engineer), undefined);
