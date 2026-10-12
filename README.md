@@ -4,7 +4,7 @@ An AI-powered knowledge **and analytics** system. It connects a company's docume
 
 The normal path to a data answer is a ticket to the data team and a dashboard days later. Here it's natural language → agent → data-analyst sub-agent → SQL on ClickHouse → chart and answer in seconds, with a full audit trail.
 
-**Live demo:** https://company-brain-mu-steel.vercel.app (password protected; ask the team for the password)
+**Live demo:** https://ingestion.work (password protected; ask the team for the password)
 
 Built with Node.js + TypeScript (no build step), ClickHouse, and Claude (`claude-opus-5-5` as the main agent, `claude-sonnet-5-5` as the SQL analyst sub-agent).
 
@@ -109,7 +109,7 @@ npm run db:users      # least-privilege ClickHouse users: brain_reader (no hr.*)
 
 ## Deploy to Vercel
 
-**Production:** https://company-brain-mu-steel.vercel.app. Every push to `main` deploys automatically (GitHub ↔ Vercel); other branches and pull requests get preview URLs, which are behind Vercel login plus the app password and share the production ClickHouse database.
+**Production:** https://ingestion.work (also https://company-brain-mu-steel.vercel.app). Every push to `main` deploys automatically (GitHub ↔ Vercel); other branches and pull requests get preview URLs, which are behind Vercel login plus the app password and share the production ClickHouse database.
 
 The same handler runs as one Vercel Function (`api/index.ts`, all routes rewritten to it; see `vercel.json`). Vercel can't run the bundled ClickHouse binary, and its instances are short-lived, so production uses **ClickHouse Cloud**. All app state (reports, schedules, gaps, memory, uploads, pending approvals) lives in ClickHouse (`brain.state`), so any instance can serve any request, including an Approve click handled by a different instance than the one running the agent.
 
