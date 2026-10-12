@@ -4,7 +4,9 @@ An AI-powered knowledge **and analytics** system. It connects a company's docume
 
 The normal path to a data answer is a ticket to the data team and a dashboard days later. Here it's natural language → agent → data-analyst sub-agent → SQL on ClickHouse → chart and answer in seconds, with a full audit trail.
 
-Built with Node.js + TypeScript (no build step), a local ClickHouse server, and Claude (`claude-opus-5-5` as the main agent, `claude-sonnet-5-5` as the SQL analyst sub-agent).
+**Live demo:** https://company-brain-mu-steel.vercel.app (password protected; ask the team for the password)
+
+Built with Node.js + TypeScript (no build step), ClickHouse, and Claude (`claude-opus-5-5` as the main agent, `claude-sonnet-5-5` as the SQL analyst sub-agent).
 
 ## Quick start
 
@@ -72,12 +74,14 @@ Data tables: `pulse.events` (~38M rows), `pulse.workspaces`, `pulse.invoices`, `
 
 ## Deploy to Vercel
 
+**Production:** https://company-brain-mu-steel.vercel.app. Every push to `main` deploys automatically (GitHub ↔ Vercel); other branches and pull requests get preview URLs, which are behind Vercel login plus the app password and share the production ClickHouse database.
+
 The same handler runs as one Vercel Function (`api/index.ts`, all routes rewritten to it; see `vercel.json`). Vercel can't run the bundled ClickHouse binary, and its instances are short-lived, so production uses **ClickHouse Cloud**. All app state (reports, schedules, gaps, memory, uploads, pending approvals) lives in ClickHouse (`brain.state`), so any instance can serve any request, including an Approve click handled by a different instance than the one running the agent.
 
 1. Create a ClickHouse Cloud service and put `CLICKHOUSE_URL` (`https://<host>:8443`), `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` in `.env`.
 2. Seed it (data is generated server-side, ~30s): `npm run db:seed`
 3. Set Vercel env vars: `ANTHROPIC_API_KEY`, the three `CLICKHOUSE_*`, `APP_PASSWORD` (shared login) and `CRON_SECRET` (any random string; Vercel Cron sends it).
-4. `vercel deploy --prod`
+4. Push to `main` (auto-deploys), or run `vercel deploy --prod` manually
 
 Notes: functions run up to 300s (enough for long data questions + approvals). On the Hobby plan Vercel Cron runs at most daily, so `/api/cron` runs due scheduled questions every day at 08:00 UTC. With `APP_PASSWORD` set, every page and API call requires the login cookie.
 
