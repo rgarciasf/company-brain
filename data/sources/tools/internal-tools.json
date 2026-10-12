@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Access Portal",
+    "url": "go/access",
+    "owner": "IT",
+    "purpose": "Request access to GitHub, AWS, and SaaS tools. Approvals route to managers automatically.",
+    "how_to_get_access": "Available to all employees via SSO."
+  },
+  {
+    "name": "Deploy Console",
+    "url": "go/deploy",
+    "owner": "Platform Team",
+    "purpose": "Deploy builds to staging and production, canary rollouts, and one-click rollback.",
+    "how_to_get_access": "Request 'aws-prod-deploy' in the Access Portal; requires manager approval and Production Safety training."
+  },
+  {
+    "name": "FlagHouse",
+    "url": "go/flags",
+    "owner": "Platform Team",
+    "purpose": "Feature flag management for gradual rollouts.",
+    "how_to_get_access": "All engineers have access by default."
+  },
+  {
+    "name": "Incident Tracker",
+    "url": "go/incidents",
+    "owner": "SRE",
+    "purpose": "Declare incidents, page on-call, track timelines and follow-ups.",
+    "how_to_get_access": "All employees can declare an incident."
+  },
+  {
+    "name": "Billing Admin",
+    "url": "go/billing-admin",
+    "owner": "Payments Team",
+    "purpose": "View customer invoices, apply credits and refunds.",
+    "how_to_get_access": "Support leads and Payments team only. Request via Access Portal with manager approval."
+  },
+  {
+    "name": "HR Portal",
+    "url": "go/hr",
+    "owner": "People Team",
+    "purpose": "Time off requests, pay and tax settings, benefits, working-abroad requests.",
+    "how_to_get_access": "All employees via SSO."
+  },
+  {
+    "name": "Navan",
+    "url": "go/travel",
+    "owner": "Finance",
+    "purpose": "Book all business travel (flights, hotels) and submit expenses.",
+    "how_to_get_access": "All employees via SSO."
+  },
+  {
+    "name": "Approved AI Tools",
+    "url": "go/ai-tools",
+    "owner": "Security Team",
+    "purpose": "List of AI assistants approved for company data: Claude (Acme Enterprise workspace) and the Company Brain. Customer data may only be used with tools on this list.",
+    "how_to_get_access": "Claude Enterprise seats requested via Access Portal."
+  }
+]

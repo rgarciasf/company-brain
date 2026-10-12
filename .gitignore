@@ -1,0 +1,9 @@
+node_modules/
+.env
+.clickhouse/
+data/gaps.json
+data/memory.json
+data/traces.jsonl
+data/feedback.jsonl
+data/reports/
+data/schedules.json

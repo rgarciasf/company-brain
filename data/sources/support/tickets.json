@@ -1,0 +1,47 @@
+[
+  {
+    "id": "SUP-10421",
+    "subject": "Can't log in with Okta after renaming our domain",
+    "customer": "Brightline Health (Enterprise)",
+    "created": "2026-09-30",
+    "status": "solved",
+    "body": "After we changed our email domain, users get 'user not found' when signing in through Okta SSO.",
+    "resolution": "The SSO configuration matches users by email. Admin updated the allowed email domain in Settings > Security > SSO and enabled 'match by NameID'. Users could log in immediately."
+  },
+  {
+    "id": "SUP-10433",
+    "subject": "Export stuck at 'preparing' for 6 hours",
+    "customer": "Fernhill Games (Growth)",
+    "created": "2026-10-02",
+    "status": "solved",
+    "body": "Our raw event export of ~40 GB has been 'preparing' since this morning.",
+    "resolution": "Exports over 10 GB must be delivered to an S3 bucket. Customer had no bucket configured, so the job was waiting. Configured S3 destination in Settings > Data > Export; export finished in 35 minutes."
+  },
+  {
+    "id": "SUP-10457",
+    "subject": "Charged twice for September?",
+    "customer": "Kestrel Analytics (Growth, EUR)",
+    "created": "2026-09-20",
+    "status": "solved",
+    "body": "We see two invoices for September with slightly different amounts.",
+    "resolution": "Affected by INC-2291. The first invoice was voided and replaced. Confirmed reissued invoice INV-77120 and applied a one-month 10% credit per the incident macro."
+  },
+  {
+    "id": "SUP-10488",
+    "subject": "Events arriving late in EU workspace",
+    "customer": "Nordvik Retail (Enterprise, eu-central)",
+    "created": "2026-10-05",
+    "status": "open",
+    "body": "Events from our checkout flow are showing up 15 minutes late in real-time dashboards.",
+    "resolution": "Known issue DI-4410 under investigation by Data Infra. Customer informed that no data is lost. CSM notified due to Enterprise SLA."
+  },
+  {
+    "id": "SUP-10502",
+    "subject": "How to move workspace from us-east to eu-central?",
+    "customer": "Lumio Labs (Growth)",
+    "created": "2026-10-07",
+    "status": "solved",
+    "body": "We need EU data residency for a new contract.",
+    "resolution": "Region can't be changed in settings after creation. Filed a migration request with Data Infra (takes about 5 business days, requires a 1-hour ingestion pause). Migration is free for Enterprise; for Growth it was approved as a one-time exception by the Support lead."
+  }
+]

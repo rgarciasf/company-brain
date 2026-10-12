@@ -1,0 +1,12 @@
+{
+  "title": "On-call Rotation - October 2026",
+  "updated": "2026-10-01",
+  "owner": "SRE",
+  "escalation": "Page via Incident Tracker. If no ack in 10 minutes, escalate to secondary, then to the Engineering Manager on duty.",
+  "rotation": [
+    { "week": "2026-10-05", "primary": "Marcus Webb", "secondary": "Yuki Tanaka", "em_on_duty": "Grace Liu" },
+    { "week": "2026-10-12", "primary": "Omar Haddad", "secondary": "Priya Nair", "em_on_duty": "Grace Liu" },
+    { "week": "2026-10-19", "primary": "Yuki Tanaka", "secondary": "Lena Okafor", "em_on_duty": "Sam Patel" },
+    { "week": "2026-10-26", "primary": "Chris Doyle", "secondary": "Omar Haddad", "em_on_duty": "Sam Patel" }
+  ]
+}

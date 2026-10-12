@@ -1,0 +1,28 @@
+{
+  "name": "company-brain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-powered company knowledge system: connects docs, meetings, FAQs, policies, product, support and internal tools, and answers questions with citations.",
+  "type": "module",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc",
+    "test": "node --test test/*.test.ts",
+    "eval": "node scripts/eval.ts",
+    "db:install": "sh scripts/install-clickhouse.sh",
+    "db:seed": "node scripts/seed.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "5.9"
+  }
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brain Report</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body class="report-page">
+  <main class="report">
+    <div class="report-brand"><a href="/">🧠 Company Brain</a> · shared report</div>
+    <div id="report"><p class="muted">Loading…</p></div>
+  </main>
+  <div id="drawer" class="drawer" hidden>
+    <div class="drawer-head"><div><div class="muted small" id="drawer-meta"></div><h3 id="drawer-title"></h3></div><button id="drawer-close" aria-label="Close">✕</button></div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </div>
+  <script src="/shared.js"></script>
+  <script>
+    const { esc, renderAnswer, renderChart, queryHtml, fmtNum } = window.BrainUI;
+    const id = location.pathname.split("/").pop();
+    fetch(`/api/report?id=${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Report not found"))))
+      .then((r) => {
+        document.title = r.title;
+        const queries = new Map(r.queries.map((q) => [q.id, q]));
+        const sources = new Map(r.sources.map((s) => [s.id, s]));
+        const lookup = (cid) => (cid.startsWith("q") ? queries.get(cid) : sources.get(cid));
+        const el = document.getElementById("report");
+        el.innerHTML = `
+          <h1>${esc(r.title)}</h1>
+          <div class="muted small">${new Date(r.createdAt).toLocaleString()} · ${r.source === "schedule" ? "scheduled run" : "shared from chat"} · persona: ${esc(r.persona)}</div>
+          <div class="report-q"><span class="muted small">Question</span><div>${esc(r.question)}</div></div>
+          <div class="bubble report-answer">${renderAnswer(r.answer, lookup)}</div>
+          <div class="charts" id="charts"></div>
+          <h2>Audit trail</h2>
+          <p class="muted small">Everything the agents did to produce this answer: ${r.queries.length} SQL quer${r.queries.length === 1 ? "y" : "ies"}, ${r.sources.length} cited document passage(s), ${r.steps.length} step(s).</p>
+          <h3>Steps</h3>
+          <ol class="steps">${r.steps.map((s) => `<li>${esc(s.label || (s.kind === "search" ? `Searched “${s.query}” (${s.resultCount} results)` : s.kind === "read" ? `Read “${s.title}”` : s.kind === "graph" ? `Explored graph around ${s.entity}` : s.kind === "gap" ? `Flagged knowledge gap` : s.kind))}</li>`).join("")}</ol>
+          <h3>Queries</h3>${r.queries.map(queryHtml).join("") || '<p class="muted small">None.</p>'}
+          <h3>Cited documents</h3>${r.sources.map((s) => `<div class="query-block"><div class="query-head"><strong>${esc(s.id)}</strong> ${esc(s.title)}${s.heading ? ` › ${esc(s.heading)}` : ""} <span class="pill">${esc(s.sourceType)}</span>${s.updated ? `<span class="pill">${esc(s.updated)}</span>` : ""}</div><div class="md">${DOMPurify.sanitize(marked.parse(s.text))}</div></div>`).join("") || '<p class="muted small">None.</p>'}`;
+        const charts = document.getElementById("charts");
+        for (const c of r.charts) { const box = document.createElement("div"); charts.appendChild(box); renderChart(box, c); }
+        el.addEventListener("click", (e) => {
+          const t = e.target.closest("[data-cite]");
+          if (!t) return;
+          e.preventDefault();
+          const item = lookup(t.dataset.cite);
+          if (!item) return;
+          document.getElementById("drawer").hidden = false;
+          document.getElementById("drawer-title").textContent = t.dataset.cite.startsWith("q") ? `Query ${item.id}` : item.title;
+          document.getElementById("drawer-meta").textContent = t.dataset.cite.startsWith("q") ? "SQL audit trail" : `${item.sourceType} · ${item.updated ?? ""}`;
+          document.getElementById("drawer-body").innerHTML = t.dataset.cite.startsWith("q") ? queryHtml(item) : `<div class="md">${DOMPurify.sanitize(marked.parse(item.text))}</div>`;
+        });
+      })
+      .catch((err) => (document.getElementById("report").innerHTML = `<p class="error">${esc(err.message)}</p>`));
+    document.getElementById("drawer-close").onclick = () => (document.getElementById("drawer").hidden = true);
+  </script>
+</body>
+</html>

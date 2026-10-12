@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Company Brain</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">🧠</span><div><strong id="company">Company</strong> Brain<div class="muted small" id="mode">…</div></div></div>
+    <nav>
+      <button class="nav active" data-view="ask">💬 Ask</button>
+      <button class="nav" data-view="knowledge">📚 Knowledge</button>
+      <button class="nav" data-view="graph">🕸️ Graph</button>
+      <button class="nav" data-view="data">📊 Data</button>
+      <button class="nav" data-view="gaps">🕳️ Gaps <span class="badge" id="gap-count">0</span></button>
+      <button class="nav" data-view="reports">🗓️ Reports</button>
+      <button class="nav" data-view="traces">🔭 Traces</button>
+    </nav>
+    <label class="field">
+      <span class="muted small">Asking as</span>
+      <select id="persona"></select>
+    </label>
+    <div class="sources">
+      <div class="muted small">Connected sources</div>
+      <ul id="source-list"></ul>
+      <div class="muted small" id="index-stats"></div>
+    </div>
+    <div class="memory">
+      <div class="muted small">🧷 What I remember about you</div>
+      <ul id="memory-list"></ul>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ASK -->
+    <section id="view-ask" class="view active">
+      <div id="chat" class="chat">
+        <div class="empty" id="empty">
+          <h1>Ask anything about <span class="company-name">the company</span></h1>
+          <p class="muted">Answers come from connected docs, meeting notes, FAQs, policies, product info, support content, internal tools and the knowledge graph — with citations.</p>
+          <div class="suggestions" id="suggestions"></div>
+        </div>
+      </div>
+      <form id="ask-form" class="composer">
+        <textarea id="question" rows="1" placeholder="e.g. What's the meal per diem for international travel?" autocomplete="off"></textarea>
+        <button type="submit" id="send">Ask</button>
+      </form>
+    </section>
+
+    <!-- KNOWLEDGE -->
+    <section id="view-knowledge" class="view">
+      <header class="view-head">
+        <h2>Knowledge</h2>
+        <div class="row">
+          <input id="kb-search" type="search" placeholder="Search the knowledge base…" />
+          <select id="kb-filter"><option value="">All sources</option></select>
+          <button id="add-btn" class="primary">+ Add knowledge</button>
+          <button id="reindex-btn" title="Re-scan data/sources">↻ Re-index</button>
+        </div>
+      </header>
+      <div id="kb-results" class="cards"></div>
+    </section>
+
+    <!-- GRAPH -->
+    <section id="view-graph" class="view">
+      <header class="view-head">
+        <h2>Knowledge graph</h2>
+        <div class="row">
+          <input id="graph-q" list="entity-list" placeholder="Entity, e.g. Billing Service" />
+          <datalist id="entity-list"></datalist>
+          <button id="graph-go" class="primary">Explore</button>
+        </div>
+      </header>
+      <p class="muted small">Declared entities and relationships (teams, services, people, features, incidents). The AI uses these for ownership, dependency and impact questions.</p>
+      <div id="graph-out"></div>
+    </section>
+
+    <!-- DATA -->
+    <section id="view-data" class="view">
+      <header class="view-head"><h2>Analytics data</h2><span class="muted small" id="ch-status"></span></header>
+      <p class="muted small">Live ClickHouse database the data-analyst agent queries. Columnar storage + compression lets agents fire many exploratory queries over tens of millions of rows in milliseconds.</p>
+      <div id="storage-cards" class="stat-cards"></div>
+      <h3>SQL console <span class="muted small">(read-only, same guardrails as the agent)</span></h3>
+      <form id="sql-form" class="sql-form">
+        <textarea id="sql-input" rows="4" spellcheck="false">SELECT toDate(event_time) AS day, countIf(event_name = 'app_crash') AS crashes, count() AS events
+FROM pulse.events
+WHERE platform = 'android' AND event_time >= '2026-09-01'
+GROUP BY day ORDER BY day</textarea>
+        <div class="row"><button class="primary" type="submit">Run ▶</button><span class="muted small" id="sql-stats"></span></div>
+      </form>
+      <div id="sql-out"></div>
+      <h3>Tables</h3>
+      <div id="tables-out"></div>
+      <h3>Agent skills <span class="muted small">(context packets loaded into the data analyst, from data/skills/)</span></h3>
+      <div id="skills-out"></div>
+    </section>
+
+    <!-- REPORTS -->
+    <section id="view-reports" class="view">
+      <header class="view-head"><h2>Reports &amp; schedules</h2></header>
+      <p class="muted small">Shared answers keep a full audit trail: every SQL query, its result, charts and cited documents. Scheduled questions run automatically and publish a new report each time (heavy queries are auto-denied when no human is around).</p>
+      <form id="schedule-form" class="schedule-form">
+        <input name="question" placeholder="e.g. Daily digest: yesterday's crash rate, EU ingestion delay and support tickets vs the prior week" required />
+        <select name="frequency">
+          <option value="daily">Daily at</option>
+          <option value="weekly">Weekly (Mon) at</option>
+          <option value="hourly">Hourly</option>
+          <option value="minutes">Every 15 min (demo)</option>
+        </select>
+        <input name="time" type="time" value="09:00" />
+        <select name="persona" id="schedule-persona"></select>
+        <button class="primary" type="submit">Schedule</button>
+      </form>
+      <div id="schedules-out"></div>
+      <h3>Reports</h3>
+      <div id="reports-out"></div>
+    </section>
+
+    <!-- TRACES -->
+    <section id="view-traces" class="view">
+      <header class="view-head"><h2>Traces</h2><span class="muted small" id="trace-backend"></span></header>
+      <p class="muted small">Every question is traced: agent runs, model generations (tokens, cost, time-to-first-token) and tool calls, including the data-analyst sub-agent and its SQL. 👍/👎 feedback on answers is stored with the trace for evaluation.</p>
+      <div id="trace-stats" class="stat-cards"></div>
+      <div id="traces-out"></div>
+    </section>
+
+    <!-- GAPS -->
+    <section id="view-gaps" class="view">
+      <header class="view-head"><h2>Knowledge gaps</h2></header>
+      <p class="muted small">Questions the Brain couldn't fully answer. Fill them by adding knowledge, then mark resolved.</p>
+      <div id="gaps-out"></div>
+    </section>
+  </main>
+
+  <!-- Source drawer -->
+  <div id="drawer" class="drawer" hidden>
+    <div class="drawer-head">
+      <div>
+        <div class="muted small" id="drawer-meta"></div>
+        <h3 id="drawer-title"></h3>
+      </div>
+      <button id="drawer-close" aria-label="Close">✕</button>
+    </div>
+    <div id="drawer-body" class="drawer-body md"></div>
+  </div>
+
+  <!-- Add knowledge modal -->
+  <dialog id="add-dialog">
+    <form id="add-form" method="dialog">
+      <h3>Add knowledge</h3>
+      <div class="tabs">
+        <label><input type="radio" name="mode" value="paste" checked /> Paste / upload</label>
+        <label><input type="radio" name="mode" value="url" /> From URL</label>
+      </div>
+      <label class="field">Title <input name="title" placeholder="e.g. Q4 Sales Kickoff Notes" /></label>
+      <div class="row">
+        <label class="field grow">Source type
+          <input name="sourceType" list="type-list" value="docs" />
+          <datalist id="type-list"></datalist>
+        </label>
+        <label class="field grow">Visible to
+          <select name="access">
+            <option value="all">Everyone</option>
+            <option value="managers">Managers only</option>
+            <option value="sales">Sales</option>
+            <option value="support">Support</option>
+            <option value="engineering">Engineering</option>
+          </select>
+        </label>
+      </div>
+      <div class="mode-paste">
+        <label class="field">Content (Markdown, text or JSON)
+          <textarea name="content" rows="10" placeholder="Paste meeting notes, a policy, FAQ…"></textarea>
+        </label>
+        <label class="field small">…or upload a file <input type="file" id="file-input" accept=".md,.markdown,.txt,.json" /></label>
+      </div>
+      <div class="mode-url" hidden>
+        <label class="field">URL <input name="url" type="url" placeholder="https://…" /></label>
+      </div>
+      <div class="error" id="add-error"></div>
+      <div class="row end">
+        <button type="button" id="add-cancel">Cancel</button>
+        <button type="submit" class="primary" id="add-submit">Add &amp; index</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="shared.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
