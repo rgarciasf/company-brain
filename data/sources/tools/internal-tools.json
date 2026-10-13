@@ -52,7 +52,7 @@
     "name": "Approved AI Tools",
     "url": "go/ai-tools",
     "owner": "Security Team",
-    "purpose": "List of AI assistants approved for company data: Claude (Acme Enterprise workspace) and the Company Brain. Customer data may only be used with tools on this list.",
+    "purpose": "List of AI assistants approved for company data: Claude (Acme Enterprise workspace) and Ingestion. Customer data may only be used with tools on this list.",
     "how_to_get_access": "Claude Enterprise seats requested via Access Portal."
   }
 ]

@@ -1,4 +1,4 @@
-/* Ingestion (Company Brain) UI — vanilla JS, no build step. Rendering helpers live in shared.js (BrainUI). */
+/* Ingestion UI — vanilla JS, no build step. Rendering helpers live in shared.js (BrainUI). */
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const { esc, renderAnswer, renderChart, tableHtml, queryHtml, fmtNum, icon } = window.BrainUI;

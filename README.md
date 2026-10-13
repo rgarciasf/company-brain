@@ -1,4 +1,4 @@
-# 🧠 Company Brain
+# Ingestion
 
 An AI-powered knowledge **and analytics** system. It connects a company's documentation, meeting notes, FAQs, policies, product info, support content and internal tools with its live product data in ClickHouse. Employees ask questions in plain English and get **cited, permission-aware, conflict-aware answers, with SQL-backed numbers and charts**.
 
@@ -22,7 +22,7 @@ Without an API key the app still runs: search-only answers, the SQL console, the
 ## Architecture
 
 ```
-            ┌───────────────────────── Company Brain agent (Opus) ─────────────────────────┐
+            ┌───────────────────────── Ingestion agent (Opus) ─────────────────────────────┐
 question ─▶ │ search_knowledge · read_document · explore_graph · remember · flag_gap        │ ─▶ cited answer
             │ analyze_data ──▶ Data-analyst sub-agent (Sonnet)                               │    + charts
             │                    list_tables · get_distinct_values · run_query · create_chart│    + audit trail

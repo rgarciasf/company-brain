@@ -15,4 +15,4 @@ Use these definitions unless the question asks for something else, and state whi
 - **Support load**: tickets per day from `pulse.support_tickets`; **first response SLA**: Enterprise within 60 minutes.
 - **CSAT**: average of non-NULL `csat` (1-5).
 
-Agent self-observability: the `brain` database has `brain.traces` (one row per question: latency_ms, cost_usd, tokens, persona) and `brain.spans` (model calls and tool calls) and `brain.feedback` (score 1 / -1), if the user asks how the Company Brain itself is being used.
+Agent self-observability: the `brain` database has `brain.traces` (one row per question: latency_ms, cost_usd, tokens, persona) and `brain.spans` (model calls and tool calls) and `brain.feedback` (score 1 / -1), if the user asks how Ingestion itself is being used.

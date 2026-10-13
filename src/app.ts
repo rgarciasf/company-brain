@@ -201,7 +201,7 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       if (body.url) {
         const target = new URL(String(body.url));
         if (!/^https?:$/.test(target.protocol)) return send(res, 400, { error: "Only http(s) URLs are supported." });
-        const r = await fetch(target, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "CompanyBrain/1.0" } });
+        const r = await fetch(target, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Ingestion/1.0" } });
         if (!r.ok) return send(res, 400, { error: `Fetch failed: HTTP ${r.status}` });
         const ct = r.headers.get("content-type") ?? "";
         const raw = (await r.text()).slice(0, 2_000_000);

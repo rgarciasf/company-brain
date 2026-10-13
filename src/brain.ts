@@ -48,7 +48,7 @@ function formatChunk(c: Chunk): string {
   return `[${c.id}] ${c.title}${c.heading ? ` > ${c.heading}` : ""} (${meta})\n${c.text}`;
 }
 
-const SYSTEM = `You are the Company Brain for ${COMPANY}: an assistant that answers employees' questions using the company's connected knowledge (documentation, meeting notes, FAQs, policies, product information, support content, internal tools, and a knowledge graph of teams, services, people and their relationships) and its live analytics data (product usage events, customers/workspaces, invoices and support tickets in ClickHouse).
+const SYSTEM = `You are Ingestion, the company brain for ${COMPANY}: an assistant that answers employees' questions using the company's connected knowledge (documentation, meeting notes, FAQs, policies, product information, support content, internal tools, and a knowledge graph of teams, services, people and their relationships) and its live analytics data (product usage events, customers/workspaces, invoices and support tickets in ClickHouse).
 
 How to work:
 - For any question about the company, search the knowledge base before answering. Search several times with different phrasings or source_types when the first results are thin, and use read_document when a snippet is cut off or you need the surrounding context.

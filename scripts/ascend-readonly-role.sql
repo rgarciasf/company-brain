@@ -1,4 +1,4 @@
--- Read-only, column-restricted Postgres role for the Company Brain HR import (npm run hr:import).
+-- Read-only, column-restricted Postgres role for the Ingestion HR import (npm run hr:import).
 -- Run in the Neon SQL Editor for the Ascend project (database: the one your app uses, usually neondb).
 -- Create the role with SQL, not the Neon Console: Console-created roles join neon_superuser and can read everything.
 -- The role can only SELECT the columns the import needs: no password hashes, emails, phones, birthdays,

@@ -164,7 +164,7 @@ export async function initTraceStore(): Promise<"clickhouse" | "file"> {
       trace_id String, created_at DateTime64(3), source LowCardinality(String), question String, persona LowCardinality(String),
       user_id String, answer String, mode LowCardinality(String), status LowCardinality(String), latency_ms UInt32,
       input_tokens UInt32, output_tokens UInt32, cost_usd Float64, tool_calls UInt16
-    ) ENGINE = MergeTree ORDER BY created_at COMMENT 'Company Brain questions (one row per question)'`);
+    ) ENGINE = MergeTree ORDER BY created_at COMMENT 'Ingestion questions (one row per question)'`);
     await ch.exec(`CREATE TABLE IF NOT EXISTS ${TRACE_DB}.spans (
       trace_id String, span_id String, parent_id String, name String, kind LowCardinality(String), start_time DateTime64(3),
       duration_ms UInt32, model LowCardinality(String), input_tokens UInt32, output_tokens UInt32, cache_read_tokens UInt32,

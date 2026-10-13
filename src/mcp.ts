@@ -1,4 +1,4 @@
-// MCP server (stdio): exposes the Company Brain to any MCP client (Claude Code, Claude Desktop…).
+// MCP server (stdio): exposes Ingestion to any MCP client (Claude Code, Claude Desktop…).
 // Knowledge search, documents, graph and read-only ClickHouse SQL work without an API key;
 // ask_brain runs the full agent (docs + data analyst) and needs ANTHROPIC_API_KEY.
 //   claude mcp add company-brain -- node /absolute/path/to/company-brain/src/mcp.ts
@@ -26,7 +26,7 @@ await initTraceStore();
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], isError });
 
-const server = new McpServer({ name: "company-brain", version: "1.0.0" });
+const server = new McpServer({ name: "ingestion", version: "1.0.0" });
 
 server.registerTool(
   "search_knowledge",
@@ -98,8 +98,8 @@ server.registerTool(
 server.registerTool(
   "ask_brain",
   {
-    title: "Ask the Company Brain",
-    description: "Ask a question in natural language. The Brain agent searches knowledge, walks the graph and delegates data questions to its SQL analyst sub-agent, then returns a cited answer. Requires ANTHROPIC_API_KEY.",
+    title: "Ask Ingestion",
+    description: "Ask a question in natural language. The Ingestion agent searches knowledge, walks the graph and delegates data questions to its SQL analyst sub-agent, then returns a cited answer. Requires ANTHROPIC_API_KEY.",
     inputSchema: { question: z.string() },
   },
   async ({ question }) => {
@@ -112,4 +112,4 @@ server.registerTool(
 );
 
 await server.connect(new StdioServerTransport());
-console.error("Company Brain MCP server ready (stdio)");
+console.error("Ingestion MCP server ready (stdio)");

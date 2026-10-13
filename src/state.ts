@@ -25,7 +25,7 @@ export async function initState(): Promise<"clickhouse" | "file"> {
     await ch.exec(`CREATE TABLE IF NOT EXISTS ${TABLE} (
       ns LowCardinality(String), key String, value String, version UInt64, deleted UInt8
     ) ENGINE = ReplacingMergeTree(version) ORDER BY (ns, key)
-    COMMENT 'Company Brain app state (reports, schedules, gaps, memory, uploads, approvals)'`);
+    COMMENT 'Ingestion app state (reports, schedules, gaps, memory, uploads, approvals)'`);
     backend = "clickhouse";
   } catch (err) {
     console.warn(`[state] using file store: ${(err as Error).message}`);

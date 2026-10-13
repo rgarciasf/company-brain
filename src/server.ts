@@ -20,7 +20,7 @@ const { authEnabled } = await import("./auth.ts");
 
 const PORT = Number(process.env.PORT ?? 3000);
 
-console.log(`\n🧠 Company Brain`);
+console.log(`\nIngestion`);
 const clickhouseUp = await ch.ensureServer((m) => console.log(m));
 if (clickhouseUp && !(await ch.databaseExists())) {
   console.log("   Seeding analytics database (first run)…");
