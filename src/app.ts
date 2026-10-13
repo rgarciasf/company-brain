@@ -118,6 +118,11 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       }
       return send(res, 200, { ok: true }, { "Set-Cookie": auth.sessionCookie(req) });
     }
+    if (p === "/api/warm") {
+      // Called by the login page so an idle ClickHouse Cloud service wakes while the user types.
+      void init().catch(() => {});
+      return send(res, 202, { ok: true });
+    }
     if (p === "/api/logout") return send(res, 200, { ok: true }, { "Set-Cookie": auth.clearCookie() });
     const isAsset = /\.(css|js|svg)$/.test(p);
     if (!isAsset && !auth.isAuthed(req) && !(p === "/api/cron" && auth.isCron(req))) {

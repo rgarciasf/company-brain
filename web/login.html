@@ -20,6 +20,7 @@
     <div class="error" id="err"></div>
   </form>
   <script>
+    fetch("/api/warm").catch(() => {}); // wake the database while the password is typed
     document.getElementById("login").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = e.target.querySelector("button");

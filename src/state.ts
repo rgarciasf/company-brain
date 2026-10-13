@@ -19,7 +19,10 @@ function nextVersion(): number {
 
 export async function initState(): Promise<"clickhouse" | "file"> {
   backend = "file";
-  if (!(await ch.ping())) return backend;
+  if (!(await ch.waitForServer())) {
+    if (ch.requireReachable()) throw new Error("ClickHouse is not reachable (the service may still be waking up). Try again in a few seconds.");
+    return backend;
+  }
   try {
     await ch.exec("CREATE DATABASE IF NOT EXISTS brain");
     await ch.exec(`CREATE TABLE IF NOT EXISTS ${TABLE} (

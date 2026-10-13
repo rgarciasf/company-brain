@@ -18,10 +18,10 @@ const { runConsoleQuery } = await import("./analyst.ts");
 const { initTraceStore } = await import("./trace.ts");
 const { initState } = await import("./state.ts");
 
+await ch.ensureServer((m) => console.error(m));
 await initState();
 await kb.reload();
 const persona = kb.getPersona(process.env.MCP_PERSONA ?? "engineer");
-await ch.ensureServer((m) => console.error(m));
 await initTraceStore();
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], isError });

@@ -208,7 +208,7 @@ async function runTool(name: string, input: Record<string, unknown>, ctx: DataCo
           ctx.session.queries.push(rec);
           ctx.emit("query", { ...rec, rows: [] });
           return {
-            content: `Query ${id} was NOT run: the user denied it (it would scan ~${human(rec.estimatedRows)} rows). Narrow it (time range, event_name filter, SAMPLE) or explain what you couldn't check.`,
+            content: `Query ${id} was NOT run: the user denied it (it would scan ~${human(rec.estimatedRows)} rows). Narrow it (shorter time range, an event_name filter, or uniq() instead of uniqExact()) or explain what you couldn't check.`,
             isError: true,
           };
         }
@@ -255,7 +255,7 @@ async function runTool(name: string, input: Record<string, unknown>, ctx: DataCo
 
 /** Runs the analyst sub-agent on one question and returns its findings for the main agent. */
 export async function analyzeData(question: string, ctx: DataContext): Promise<ToolOutput> {
-  if (!(await ch.ping())) return { content: "The analytics database (ClickHouse) is not reachable, so data questions can't be answered right now.", isError: true };
+  if (!(await ch.waitForServer())) return { content: "The analytics database (ClickHouse) is not reachable, so data questions can't be answered right now.", isError: true };
   ctx.emit("step", { kind: "analyst", label: `Data analyst: ${question}` });
   const before = ctx.session.queries.length;
   const result = await runAgent(

@@ -99,7 +99,7 @@ Real HR data from Ascend (Postgres on Neon) is imported into the ClickHouse `hr`
 # 1. Once: create the read-only, column-restricted role (Neon SQL Editor) — scripts/ascend-readonly-role.sql
 # 2. .env: ASCEND_DATABASE_URL=postgresql://brain_readonly:…@<direct host>/neondb?sslmode=verify-full
 npm run hr:import     # org structure, review cycles, reviews, per-question ratings, goals/KRs, feedback metadata, competencies
-npm run db:users      # least-privilege ClickHouse users: brain_reader (no hr.*) and brain_hr_reader
+npm run db:users      # least-privilege ClickHouse users: brain_reader (no hr.*) and brain_hr_reader, with a server-side settings profile (hard caps) and hourly quota
 ```
 
 - **Privacy by construction:** the Postgres role can't read emails, phones, birthdays, password hashes, tokens or any free text (feedback, review comments, written answers, calibration notes); every person gets a stable pseudonym (salted with `ASCEND_SALT`), and real names inside team names, titles and goal titles are replaced. Disconnect any time: `DROP OWNED BY brain_readonly; DROP ROLE brain_readonly;`
@@ -152,6 +152,7 @@ npm run typecheck
 | `HYDRA_DB_API_KEY` / `HYDRA_DB_DATABASE` / `HYDRA_DB_COLLECTION` / `HYDRA_DB_MODE` | — / `company_brain` / `knowledge` / `fast` | HydraDB backend settings |
 | `APP_PASSWORD` | — | Shared password login (required for public deployments) |
 | `HR_PASSWORD` | — | Optional second password for the HR persona (unset = no second password) |
+| `CLICKHOUSE_WAKE_TIMEOUT_MS` | 45000 | How long to wait for an idle ClickHouse Cloud service to wake before failing (on Vercel there is no silent file fallback) |
 | `ASCEND_DATABASE_URL` / `ASCEND_SALT` | — | HR import source (read-only role) / pseudonym salt (auto-generated) |
 | `CLICKHOUSE_READER_PASSWORD` / `CLICKHOUSE_HR_READER_PASSWORD` | — | Least-privilege users for agent SQL (`npm run db:users`) |
 | `CRON_SECRET` | — | Authenticates Vercel Cron calls to `/api/cron` |

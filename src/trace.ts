@@ -157,7 +157,10 @@ let useClickHouse = false;
 
 export async function initTraceStore(): Promise<"clickhouse" | "file"> {
   useClickHouse = false;
-  if (!(await ch.ping())) return "file";
+  if (!(await ch.waitForServer())) {
+    if (ch.requireReachable()) throw new Error("ClickHouse is not reachable (the service may still be waking up). Try again in a few seconds.");
+    return "file";
+  }
   try {
     await ch.exec(`CREATE DATABASE IF NOT EXISTS ${TRACE_DB}`);
     await ch.exec(`CREATE TABLE IF NOT EXISTS ${TRACE_DB}.traces (

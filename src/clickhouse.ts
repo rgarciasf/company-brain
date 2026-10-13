@@ -110,13 +110,35 @@ export async function insertJson(table: string, rows: object[]): Promise<void> {
   await exec(`INSERT INTO ${table} FORMAT JSONEachRow\n` + rows.map((r) => JSON.stringify(r)).join("\n"), { date_time_input_format: "best_effort" });
 }
 
-export async function ping(): Promise<boolean> {
+export async function ping(timeoutMs = 4000): Promise<boolean> {
   try {
-    const res = await fetch(new URL("/ping", CH_URL), { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(new URL("/ping", CH_URL), { signal: AbortSignal.timeout(timeoutMs) });
     return res.ok;
   } catch {
     return false;
   }
+}
+
+/** How long to wait for a remote server: an idle ClickHouse Cloud service takes ~15 s to wake. */
+export const WAKE_TIMEOUT_MS = Number(process.env.CLICKHOUSE_WAKE_TIMEOUT_MS ?? 45_000);
+
+/**
+ * Ping until the server answers or `timeoutMs` passes. A remote (Cloud) server gets the full wake
+ * window; a local default URL only gets one quick ping, since nothing will wake it.
+ */
+export async function waitForServer(timeoutMs = process.env.CLICKHOUSE_URL ? WAKE_TIMEOUT_MS : 0): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (await ping(Math.min(10_000, Math.max(deadline - Date.now(), 4000)))) return true;
+    if (Date.now() >= deadline) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  } while (Date.now() < deadline);
+  return false;
+}
+
+/** On Vercel the file fallback isn't shared between instances, so an unreachable server must fail loudly. */
+export function requireReachable(): boolean {
+  return !!process.env.VERCEL;
 }
 
 // ---------------- SQL safety ----------------
@@ -219,7 +241,7 @@ export function hasLocalBinary(): boolean {
 
 /** Make sure a ClickHouse server is reachable; start the bundled binary if needed. */
 export async function ensureServer(log = console.log): Promise<boolean> {
-  if (await ping()) return true;
+  if (await waitForServer()) return true;
   if (process.env.CLICKHOUSE_URL || !hasLocalBinary()) return false;
   const dataDir = path.join(CH_DIR, "data");
   fs.mkdirSync(dataDir, { recursive: true });
