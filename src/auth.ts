@@ -54,12 +54,11 @@ export function hrGateEnabled(): boolean {
 }
 
 /**
- * True when the HR persona may be used: the HR cookie is present, or no HR_PASSWORD is configured
- * on a local machine. On Vercel (production/preview), HR stays locked until HR_PASSWORD is set,
- * so real HR data can never be exposed by a missing setting.
+ * True when the HR persona may be used: no HR_PASSWORD is configured (HR is then open to anyone
+ * past the app password), or the HR cookie from /api/hr-unlock is present.
  */
 export function hrUnlocked(req: http.IncomingMessage): boolean {
-  if (!hrGateEnabled()) return !process.env.VERCEL;
+  if (!hrGateEnabled()) return true;
   const cookie = (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${HR_COOKIE}=`));
   return !!cookie && safeEqual(cookie.slice(HR_COOKIE.length + 1), token(process.env.HR_PASSWORD!));
 }
