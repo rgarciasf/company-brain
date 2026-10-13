@@ -16,3 +16,5 @@ Use these definitions unless the question asks for something else, and state whi
 - **CSAT**: average of non-NULL `csat` (1-5).
 
 Agent self-observability: the `brain` database has `brain.traces` (one row per question: latency_ms, cost_usd, tokens, persona) and `brain.spans` (model calls and tool calls) and `brain.feedback` (score 1 / -1), if the user asks how Ingestion itself is being used.
+
+Meeting follow-ups: `brain.meeting_items` holds action items, commitments and decisions extracted from meeting notes and transcripts (kind, text, owner, counterparty = customer a commitment was made to, due_date, status open/done, meeting_title, meeting_date). It is a ReplacingMergeTree: always query `FROM brain.meeting_items FINAL WHERE deleted = 0`. Overdue = `status = 'open' AND due_date < today()`. Use it for counts and trends (overdue items by owner, commitments per customer); for listing specific items the main agent has a dedicated tool.

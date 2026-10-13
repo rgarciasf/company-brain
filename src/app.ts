@@ -15,6 +15,7 @@ import * as state from "./state.ts";
 import * as auth from "./auth.ts";
 import { ANALYST_MODEL, loadSkills, runConsoleQuery } from "./analyst.ts";
 import * as org from "./org.ts";
+import * as meetings from "./meetings.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, "..", "web");
@@ -217,7 +218,10 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       if (!title || !content.trim()) return send(res, 400, { error: "Title and content (or a URL) are required." });
       const format = body.format === "json" ? "json" : "md";
       const id = await kb.addSource({ title, sourceType, content, owner: body.owner ? String(body.owner) : undefined, access: body.access ? String(body.access) : undefined, format });
-      return send(res, 200, { id, stats: await kb.stats() });
+      // A new meeting is processed right away, so its action items show up with the upload.
+      const doc = kb.allDocs().find((d) => d.id === id);
+      const extracted = doc?.sourceType === meetings.MEETING_SOURCE ? await meetings.syncMeeting(doc).catch((err) => ({ error: (err as Error).message })) : undefined;
+      return send(res, 200, { id, stats: await kb.stats(), meetingItems: extracted });
     }
 
     // ---- Ask (SSE) ----
@@ -334,7 +338,30 @@ export async function handle(req: http.IncomingMessage, res: http.ServerResponse
       return report ? send(res, 200, { id: report.id, url: `/r/${report.id}` }) : send(res, 409, { error: "Schedule not found or already running." });
     }
     if (p === "/api/cron" && (req.method === "GET" || req.method === "POST")) {
-      return send(res, 200, { ran: await reports.runDueSchedules() });
+      const meetingSync = await meetings.syncAll().catch((err) => [{ error: (err as Error).message }]);
+      return send(res, 200, { ran: await reports.runDueSchedules(), meetings: meetingSync });
+    }
+
+    // ---- Meetings ----
+    if (p === "/api/meetings" && req.method === "GET") {
+      const q = url.searchParams;
+      const filter: meetings.ItemFilter = {
+        status: (q.get("status") ?? "open") as meetings.ItemFilter["status"],
+        kind: (q.get("kind") ?? "all") as meetings.ItemFilter["kind"],
+        owner: q.get("owner") ?? undefined,
+        meeting: q.get("meeting") ?? undefined,
+      };
+      const [overview, items] = await Promise.all([meetings.overview(persona), meetings.listItems(persona, filter)]);
+      return send(res, 200, { ...overview, today: meetings.today(), items: items.map(({ chunk, ...i }) => ({ ...i, chunk: chunk ? chunkMeta(chunk) : null })) });
+    }
+    if (p === "/api/meetings/status" && req.method === "POST") {
+      const body = await readBody(req);
+      const item = await meetings.setStatus(String(body.id), body.status === "done" ? "done" : "open", persona);
+      return item ? send(res, 200, item) : send(res, 404, { error: "Item not found." });
+    }
+    if (p === "/api/meetings/sync" && req.method === "POST") {
+      const body = await readBody(req);
+      return send(res, 200, { results: await meetings.syncAll({ force: !!body.force }) });
     }
 
     if (p.startsWith("/api/")) return send(res, 404, { error: "Unknown endpoint" });

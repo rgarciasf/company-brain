@@ -20,6 +20,7 @@
     <nav>
       <button class="nav active" data-view="ask"><i data-lucide="message-square"></i>Ask</button>
       <button class="nav" data-view="knowledge"><i data-lucide="book-open"></i>Knowledge</button>
+      <button class="nav" data-view="meetings"><i data-lucide="calendar-check"></i>Meetings <span class="badge" id="overdue-count" hidden>0</span></button>
       <button class="nav" data-view="graph"><i data-lucide="network"></i>Graph</button>
       <button class="nav" data-view="data"><i data-lucide="chart-column"></i>Data</button>
       <button class="nav" data-view="gaps"><i data-lucide="circle-help"></i>Gaps <span class="badge" id="gap-count">0</span></button>
@@ -69,6 +70,33 @@
         </div>
       </header>
       <div id="kb-results" class="cards"></div>
+    </section>
+
+    <!-- MEETINGS -->
+    <section id="view-meetings" class="view">
+      <header class="view-head">
+        <h2>Meetings</h2>
+        <div class="row">
+          <div class="seg" role="tablist" id="mt-status">
+            <button class="seg-btn active" data-mt-status="open">Open</button>
+            <button class="seg-btn" data-mt-status="overdue">Overdue</button>
+            <button class="seg-btn" data-mt-status="done">Done</button>
+            <button class="seg-btn" data-mt-status="all">All</button>
+          </div>
+          <select id="mt-kind">
+            <option value="all">All kinds</option>
+            <option value="action_item">Action items</option>
+            <option value="commitment">Commitments</option>
+            <option value="decision">Decisions</option>
+          </select>
+          <input id="mt-owner" type="search" placeholder="Owner…" />
+          <button id="mt-add" class="primary"><i data-lucide="plus"></i>Add meeting</button>
+          <button id="mt-sync" title="Extract items from new or changed meetings"><i data-lucide="refresh-cw"></i>Re-scan</button>
+        </div>
+      </header>
+      <p class="muted small">Action items, commitments and decisions extracted from meeting notes and transcripts (paste notes or upload a Zoom/Teams <code>.vtt</code>). Each item links to the moment in the meeting it was said. Ask questions like “Which action items are overdue?” or “What did we promise Brightline Health?”.</p>
+      <div id="mt-stats" class="stat-cards"></div>
+      <div id="mt-out"></div>
     </section>
 
     <!-- GRAPH -->
@@ -204,7 +232,7 @@ GROUP BY day ORDER BY day</textarea>
         <label class="field">Content (Markdown, text or JSON)
           <textarea name="content" rows="10" placeholder="Paste meeting notes, a policy, FAQ…"></textarea>
         </label>
-        <label class="field small">…or upload a file <input type="file" id="file-input" accept=".md,.markdown,.txt,.json" /></label>
+        <label class="field small">…or upload a file <input type="file" id="file-input" accept=".md,.markdown,.txt,.json,.vtt" /></label>
       </div>
       <div class="mode-url" hidden>
         <label class="field">URL <input name="url" type="url" placeholder="https://…" /></label>

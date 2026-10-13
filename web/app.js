@@ -27,6 +27,8 @@ const SUGGESTIONS = [
   { tag: "Knowledge graph · impact", q: "What breaks if the Query Engine goes down, and who should I contact?" },
   { tag: "Permissions (try Engineer vs Manager)", q: "What is the salary band for a Staff Engineer?" },
   { tag: "Knowledge gap", q: "What's the parking policy at the Austin office?" },
+  { tag: "Meetings · follow-ups", q: "Which action items from our meetings are overdue, and who owns them?" },
+  { tag: "Meetings · commitments", q: "What did we promise Brightline Health on our last call, and is any of it late?" },
 ];
 
 const HR_SUGGESTIONS = [
@@ -73,6 +75,7 @@ async function init() {
   renderStats(status.stats);
   renderSuggestions();
   loadMemory();
+  api("/api/meetings?status=overdue").then((d) => setOverdue(d.stats.overdue)).catch(() => {});
   const graph = await api("/api/graph");
   $("#entity-list").innerHTML = graph.entities.map((e) => `<option value="${esc(e.name)}">${esc(e.type)}</option>`).join("");
 }
@@ -106,6 +109,7 @@ function show(view) {
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
   if (view === "knowledge") loadKnowledge();
   if (view === "gaps") loadGaps();
+  if (view === "meetings") loadMeetings();
   if (view === "data") loadData();
   if (view === "traces") loadTraces();
   if (view === "reports") loadReports();
@@ -136,6 +140,7 @@ function stepLabel(s) {
     case "schema": return { icon: "folder-tree", text: s.label };
     case "values": return { icon: "whole-word", text: s.label };
     case "org": return { icon: "list-tree", text: s.label };
+    case "meetings": return { icon: "calendar-check", text: s.label };
     default: return { icon: "sparkles", text: s.label || s.kind };
   }
 }
@@ -486,6 +491,69 @@ async function loadGaps() {
     : `<p class="muted">No gaps yet. Ask something the knowledge base doesn't cover to see one appear.</p>`;
 }
 
+/* ---------------- Meetings ---------------- */
+
+const mt = { status: "open" };
+const KIND_LABEL = { action_item: "Action item", commitment: "Commitment", decision: "Decision" };
+
+async function loadMeetings() {
+  const q = new URLSearchParams({ status: mt.status, kind: $("#mt-kind").value, owner: $("#mt-owner").value.trim() });
+  const d = await api(`/api/meetings?${q}`);
+  d.items.forEach((i) => i.chunk && state.chunks.set(i.chunk.id, i.chunk));
+  setOverdue(d.stats.overdue);
+  $("#mt-stats").innerHTML = [
+    [d.stats.meetings, "meetings"],
+    [d.stats.open, "open items"],
+    [d.stats.overdue, "overdue"],
+    [d.stats.commitments, "open customer commitments"],
+  ].map(([v, l]) => `<div class="stat"><div class="stat-v">${fmtNum(v)}</div><div class="muted small">${l}</div></div>`).join("");
+  const byMeeting = new Map(d.meetings.map((m) => [m.id, { ...m, list: [] }]));
+  for (const i of d.items) byMeeting.get(i.meeting_id)?.list.push(i);
+  const groups = [...byMeeting.values()].filter((m) => m.list.length);
+  $("#mt-out").innerHTML = groups.length
+    ? groups.map((m) => `<div class="mt-meeting">
+        <div class="mt-head"><button class="link" data-doc="${esc(m.id)}">${esc(m.title)}</button>
+          <span class="muted small">${esc(m.date ?? "")}${m.transcript ? " · transcript" : " · notes"} · ${m.open} open${m.overdue ? ` · <span class="overdue">${m.overdue} overdue</span>` : ""}${m.extractedWith ? ` · extracted by ${m.extractedWith === "ai" ? "AI" : "checklist"}` : ""}</span></div>
+        ${m.list.map((i) => `<div class="mt-item ${i.status === "done" ? "done" : ""}">
+          ${i.kind === "decision" ? `<span class="mt-dot">${icon("gavel", "ico-sm")}</span>` : `<input type="checkbox" data-mt-toggle="${i.id}" ${i.status === "done" ? "checked" : ""} title="Mark ${i.status === "done" ? "open" : "done"}" />`}
+          <div class="grow"><div>${esc(i.text)}</div>
+            <div class="muted small"><span class="pill ${i.kind}">${KIND_LABEL[i.kind]}</span>
+              ${i.owner ? ` ${icon("user", "ico-sm")} ${esc(i.owner)}` : ""}
+              ${i.counterparty ? ` · to <b>${esc(i.counterparty)}</b>` : ""}
+              ${i.due_date ? ` · <span class="${i.overdue ? "overdue" : ""}">${i.overdue ? "overdue, " : ""}due ${esc(i.due_date)}</span>` : ""}
+              ${i.chunk ? ` · <button class="link" data-chunk="${i.chunk.id}">${icon("play", "ico-sm")}${esc(i.timestamp || "in notes")}</button>` : ""}</div>
+            ${i.quote ? `<div class="mt-quote">“${esc(i.quote)}”</div>` : ""}</div></div>`).join("")}
+      </div>`).join("")
+    : `<p class="muted">${d.meetings.length ? "Nothing matches these filters." : "No meetings yet. Add meeting notes or a transcript to get started."}</p>`;
+}
+
+function setOverdue(n) {
+  const b = $("#overdue-count");
+  if (!b) return;
+  b.hidden = !n;
+  b.textContent = n;
+}
+
+$$("[data-mt-status]").forEach((b) => (b.onclick = () => {
+  mt.status = b.dataset.mtStatus;
+  $$("[data-mt-status]").forEach((x) => x.classList.toggle("active", x === b));
+  loadMeetings();
+}));
+$("#mt-kind").addEventListener("change", loadMeetings);
+let mtTimer;
+$("#mt-owner").addEventListener("input", () => { clearTimeout(mtTimer); mtTimer = setTimeout(loadMeetings, 250); });
+$("#mt-add").onclick = () => { openAdd(); $("#add-form").sourceType.value = "meetings"; };
+$("#mt-sync").onclick = async (e) => {
+  const b = e.currentTarget;
+  b.disabled = true;
+  try { await api("/api/meetings/sync", { method: "POST", body: "{}" }); await loadMeetings(); } catch (err) { alert(err.message); } finally { b.disabled = false; }
+};
+document.addEventListener("change", (e) => {
+  const id = e.target.dataset?.mtToggle;
+  if (!id) return;
+  api("/api/meetings/status", { method: "POST", body: JSON.stringify({ id, status: e.target.checked ? "done" : "open" }) }).then(loadMeetings).catch((err) => alert(err.message));
+});
+
 /* ---------------- Add knowledge ---------------- */
 
 function openAdd(prefillTitle = "") {
@@ -739,7 +807,7 @@ $("#add-form").addEventListener("submit", async (e) => {
     });
     $("#add-dialog").close();
     await refreshStats();
-    show("knowledge");
+    show(f.sourceType.value.trim().toLowerCase() === "meetings" ? "meetings" : "knowledge");
   } catch (err) {
     $("#add-error").textContent = err.message;
   } finally {

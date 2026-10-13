@@ -91,6 +91,17 @@ KNOWLEDGE_BACKEND=hydradb npm run eval  # A/B the answer eval against local sear
 
 On Vercel, add `KNOWLEDGE_BACKEND=hydradb` and `HYDRA_DB_API_KEY` to the environment.
 
+## Meetings connector (action items, commitments, decisions)
+
+Meeting notes and call transcripts become structured follow-ups you can track and ask about.
+
+- **Sources:** anything with source type `meetings`: Markdown notes, or transcripts as `[hh:mm:ss] Speaker: text` lines, or a WebVTT (`.vtt`) export from Zoom / Teams / Meet (uploaded via **Meetings → Add meeting** or dropped in `data/sources/meetings/`). Transcripts are chunked by time window (`Transcript 00:03:35–00:06:55`), so every citation points to the moment something was said.
+- **Extraction:** Claude (`ANALYST_MODEL`, structured JSON output) pulls out every action item, commitment (e.g. promises to a customer) and decision, with owner, counterparty, due date (relative dates resolved against the meeting date), status, timestamp and a supporting quote. Without an API key it falls back to `- [ ] Owner: task (due Oct 20)` checklists. Meetings are re-extracted only when their content changes; items someone marked done stay done.
+- **When it runs:** on upload, at server start, from the daily cron, and from the **Re-scan** button.
+- **Storage:** `brain.meeting_items` in ClickHouse (ReplacingMergeTree; read with `FINAL`), or the file state store without ClickHouse. The reader users can query it, limited by row policies to meetings their personas may see, so the data analyst can answer counts and trends ("overdue items by owner").
+- **Agent tool:** `meeting_items` (status open / overdue / done, kind, owner, customer, meeting, keywords) returns items with chunk ids to cite. Try *"Which action items from our meetings are overdue, and who owns them?"* or *"What did we promise Brightline Health on our last call, and is any of it late?"*
+- **UI:** the **Meetings** tab groups items by meeting with Open / Overdue / Done filters, checkboxes to mark items done, an overdue badge, and a link from each item to its moment in the transcript.
+
 ## HR · People & Performance (Ascend import)
 
 Real HR data from Ascend (Postgres on Neon) is imported into the ClickHouse `hr` database, **pseudonymised**:

@@ -308,3 +308,19 @@ body.login-page { display: grid; place-items: center; min-height: 100%; padding:
 .org-title { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .org-dept { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .org-count { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* Meetings */
+button.link { border: none; background: transparent; padding: 0; min-height: 0; color: var(--accent); font-weight: 500; display: inline-flex; align-items: center; gap: 3px; }
+button.link:hover { background: transparent; text-decoration: underline; }
+.overdue { color: var(--red-700); font-weight: 600; }
+.mt-meeting { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 14px 16px; margin: 12px 0; box-shadow: var(--shadow-sm); }
+.mt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 6px; }
+.mt-head button.link { font-size: 15px; font-weight: 600; color: var(--text-strong); }
+.mt-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); }
+.mt-item input[type="checkbox"] { min-height: 0; width: 16px; height: 16px; margin-top: 3px; accent-color: var(--accent); }
+.mt-item.done > .grow > div:first-child { text-decoration: line-through; color: var(--muted); }
+.mt-item .grow { display: flex; flex-direction: column; gap: 3px; }
+.mt-dot { width: 16px; color: var(--muted); margin-top: 2px; }
+.mt-quote { font-size: 12px; color: var(--secondary); border-left: 2px solid var(--brand-200); padding-left: 8px; }
+.pill.commitment { background: var(--brand-100); color: var(--brand-700); }
+.pill.decision { background: var(--amber-100); color: var(--amber-800); }

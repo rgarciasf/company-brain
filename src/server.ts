@@ -35,6 +35,9 @@ console.log(`   State: ${state.stateBackend()} · traces: ${traces.traceBackend(
 console.log(aiEnabled() ? `   AI: ${MODEL} (+ ${ANALYST_MODEL} data analyst)` : "   AI answers: OFF (search-only). Set ANTHROPIC_API_KEY in .env to enable.");
 if (authEnabled()) console.log("   Login: APP_PASSWORD required");
 reports.startScheduler();
+// Extract action items from new or changed meetings in the background.
+const meetings = await import("./meetings.ts");
+void meetings.syncAll({ log: (m) => console.log(`   ${m}`) }).catch((err) => console.warn(`[meetings] ${(err as Error).message}`));
 http.createServer(handle).listen(PORT, () => console.log(`   Running at http://localhost:${PORT}\n`));
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {

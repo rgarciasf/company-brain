@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chunkDocument, loadDocuments, parseSource, type Chunk, type Doc } from "./ingest.ts";
+import { chunkDocument, loadDocuments, parseSource, vttToTranscript, type Chunk, type Doc } from "./ingest.ts";
 import { BM25Index, tokenize, type SearchHit } from "./search.ts";
 import * as state from "./state.ts";
 import * as hydra from "./hydra.ts";
@@ -145,6 +145,11 @@ export function getChunk(id: string): Chunk | undefined {
   return chunks.find((c) => c.id === id);
 }
 
+/** Every document, regardless of access (connectors filter by persona themselves). */
+export function allDocs(): Doc[] {
+  return docs;
+}
+
 /** Every chunk, regardless of access (for syncing to external retrieval backends). */
 export function allChunks(): Chunk[] {
   return chunks;
@@ -194,12 +199,13 @@ export async function addSource(input: { title: string; sourceType: string; cont
   const existing = new Set((await state.list<UploadedSource>("source")).map((s) => s.key));
   let name = slugify(input.title);
   for (let n = 2; existing.has(`${type}/${name}.${ext}`) || fs.existsSync(path.join(SOURCES_DIR, type, `${name}.${ext}`)); n++) name = `${slugify(input.title)}-${n}`;
-  let content = input.content;
+  // WebVTT captions (Zoom/Teams/Meet exports) become "[hh:mm:ss] Speaker: text" transcript lines.
+  let content = /^\uFEFF?WEBVTT/.test(input.content.trim()) ? vttToTranscript(input.content) : input.content;
   if (ext === "md") {
     const today = new Date().toISOString().slice(0, 10);
     const fm = [`title: ${input.title.replace(/\n/g, " ")}`, `owner: ${input.owner || "Uploaded"}`, `updated: ${today}`];
     if (input.access && input.access !== "all") fm.push(`access: ${input.access}`);
-    content = `---\n${fm.join("\n")}\n---\n\n${input.content.trim()}\n`;
+    content = `---\n${fm.join("\n")}\n---\n\n${content.trim()}\n`;
   } else {
     JSON.parse(content); // validate
   }

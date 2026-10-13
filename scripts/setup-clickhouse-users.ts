@@ -1,6 +1,7 @@
 // Create least-privilege ClickHouse users for agent SQL (database-level enforcement of personas):
 //   brain_reader     SELECT on pulse.* and brain.traces/spans/feedback
 //   brain_hr_reader  the same plus hr.*  (used only for the HR persona)
+//   Both can read brain.meeting_items, limited by row policies to meetings their personas may see.
 // Both get a server-side settings profile (read-only, hard caps the client can't raise) and an
 // hourly quota, so limits hold even if a reader password leaks.
 // Passwords are generated once and stored in .env (copy them to Vercel for production).
@@ -22,12 +23,14 @@ if (!(await ch.ensureServer())) {
 const strong = () => `Br${randomBytes(18).toString("base64url")}9!`;
 
 const users = [
-  { name: "brain_reader", env: "CLICKHOUSE_READER_PASSWORD", grants: ["pulse.*", "brain.traces", "brain.spans", "brain.feedback"] },
-  { name: "brain_hr_reader", env: "CLICKHOUSE_HR_READER_PASSWORD", grants: ["pulse.*", "hr.*", "brain.traces", "brain.spans", "brain.feedback"] },
+  { name: "brain_reader", env: "CLICKHOUSE_READER_PASSWORD", grants: ["pulse.*", "brain.traces", "brain.spans", "brain.feedback", "brain.meeting_items"] },
+  { name: "brain_hr_reader", env: "CLICKHOUSE_HR_READER_PASSWORD", grants: ["pulse.*", "hr.*", "brain.traces", "brain.spans", "brain.feedback", "brain.meeting_items"] },
 ];
+const { TABLE_DDL } = await import("../src/meetings.ts");
 
 await ch.exec("CREATE DATABASE IF NOT EXISTS hr");
 await ch.exec("CREATE DATABASE IF NOT EXISTS brain");
+await ch.exec(TABLE_DDL);
 let wroteEnv = false;
 for (const u of users) {
   let password = process.env[u.env];
@@ -59,6 +62,9 @@ await ch.exec(`CREATE SETTINGS PROFILE OR REPLACE brain_agent_profile SETTINGS
   max_bytes_to_read = 20000000000 MAX 20000000000,
   max_memory_usage = 4000000000 MAX 4000000000
   TO ${readers}`);
+// Meeting items inherit their meeting's access groups; each reader only sees rows its personas may.
+await ch.exec("CREATE ROW POLICY OR REPLACE meeting_items_everyone ON brain.meeting_items FOR SELECT USING has(access, 'all') TO brain_reader");
+await ch.exec("CREATE ROW POLICY OR REPLACE meeting_items_hr ON brain.meeting_items FOR SELECT USING hasAny(access, ['all', 'hr', 'managers']) TO brain_hr_reader");
 await ch.exec(`CREATE QUOTA OR REPLACE brain_agent_quota
   FOR INTERVAL 1 hour MAX queries = 3000, read_rows = 20000000000, execution_time = 3600
   TO ${readers}`);
